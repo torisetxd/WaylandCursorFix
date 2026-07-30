@@ -1,0 +1,152 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Thu, 31 Jul 2026 02:00:00 +0300
+Subject: [PATCH] xwayland: make hidden warp and ungrab release atomic
+
+Games commonly finish relative pointer capture by warping the hidden X11
+pointer to a menu position and immediately ungrabbing it. Xwayland delays
+showing a newly visible cursor for up to 5 ms. Relative motion queued before
+the warp, or delivered during that cursor-show interval, can therefore move
+the virtual sprite before the real pointer is restored. The cursor then
+reappears at the old locked position or far along the last camera movement.
+
+Remember a hidden warp as a release candidate. Invalidate ordinary recenter
+warps when genuinely newer relative input arrives while capture is still
+active, but freeze an explicit grab's candidate as soon as the grab ends.
+This preserves applications which release at their latest virtual position
+while making an immediate WarpPointer+UngrabPointer pair atomic.
+
+Before destroying the locked-pointer object, commit the selected target as
+its final cursor-position hint. KWin ignores pointer-warp-v1 while the lock is
+still active, so making the unlock hint and direct warp agree removes their
+ordering dependency without a timer, sleep, or compositor round trip.
+---
+ hw/xwayland/xwayland-input.c | 71 ++++++++++++++++++++++++++++++++++++++++--
+ hw/xwayland/xwayland-input.h |  5 +++
+ 2 files changed, 72 insertions(+), 4 deletions(-)
+
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -107,6 +107,16 @@ get_pointer_device(struct xwl_seat *xwl_seat)
+ }
+ 
+ static Bool
++xwl_seat_has_explicit_pointer_grab(struct xwl_seat *xwl_seat)
++{
++    GrabInfoPtr grab_info = &xwl_seat->pointer->deviceGrab;
++
++    return grab_info->grab &&
++           !grab_info->fromPassiveGrab &&
++           !grab_info->implicitGrab;
++}
++
++static Bool
+ init_pointer_buttons(DeviceIntPtr device)
+ {
+ #define NBUTTONS 10
+@@ -999,6 +1009,26 @@ relative_pointer_handle_relative_motion(void *data,
+                                         wl_fixed_t dy_unaccelf)
+ {
+     struct xwl_seat *xwl_seat = data;
++    struct xwl_pointer_warp_emulator *warp_emulator =
++        xwl_seat->pointer_warp_emulator;
++    CARD64 event_time_us = ((CARD64) utime_hi << 32) | utime_lo;
++
++    /*
++     * A hidden X11 warp followed by no newer physical motion is commonly the
++     * application's intended release position. Keep it as an atomic release
++     * target even if older relative events are still waiting in mieq.
++     *
++     * A genuinely newer motion event while the same explicit grab is still
++     * active invalidates that target. Once the grab is released, freeze the
++     * target across Xwayland's delayed cursor-show interval. For confinement
++     * without an explicit grab, newer motion always invalidates it.
++     */
++    if (warp_emulator &&
++        warp_emulator->release_warp_valid &&
++        event_time_us > warp_emulator->release_warp_time_us &&
++        (!warp_emulator->release_warp_was_grabbed ||
++         xwl_seat_has_explicit_pointer_grab(xwl_seat)))
++        warp_emulator->release_warp_valid = FALSE;
+ 
+     xwl_seat->pending_pointer_event.has_relative = TRUE;
+     xwl_seat->pending_pointer_event.dx = wl_fixed_to_double(dxf);
+@@ -3711,6 +3741,23 @@ xwl_seat_emulate_pointer_warp(struct xwl_seat *xwl_seat,
+                                    sprite,
+                                    x, y);
+ 
++    if (!visible_cursor) {
++        /*
++         * Treat this target as the release position while no newer physical
++         * motion follows it during the grab. Freeze it once an immediately
++         * following UngrabPointer ends that grab. This makes the pair atomic
++         * without pinning ordinary hidden-cursor motion to an old recenter
++         * warp.
++         */
++        xwl_seat->pointer_warp_emulator->release_warp_valid = TRUE;
++        xwl_seat->pointer_warp_emulator->release_warp_was_grabbed =
++            xwl_seat_has_explicit_pointer_grab(xwl_seat);
++        xwl_seat->pointer_warp_emulator->release_warp_x = x;
++        xwl_seat->pointer_warp_emulator->release_warp_y = y;
++        xwl_seat->pointer_warp_emulator->release_warp_time_us =
++            GetTimeInMicros();
++    }
++
+     /*
+      * Hidden-cursor warps keep the lock alive so relative motion can update
+      * Xwayland's virtual pointer position without the real pointer reaching
+@@ -3762,9 +3809,7 @@ xwl_seat_maybe_lock_on_hidden_cursor(struct xwl_seat *xwl_seat)
+         return FALSE;
+ 
+     grab_info = &xwl_seat->pointer->deviceGrab;
+-    if (grab_info->grab &&
+-        !grab_info->fromPassiveGrab &&
+-        !grab_info->implicitGrab) {
++    if (xwl_seat_has_explicit_pointer_grab(xwl_seat)) {
+         grab_window = xwl_window_from_window(grab_info->grab->window);
+         explicit_pointer_grab = grab_window == xwl_seat->focus_window;
+     }
+@@ -3792,9 +3837,27 @@ xwl_seat_cursor_visibility_changed(struct xwl_seat *xwl_seat)
+         /*
+          * A direct warp after unlocking reliably restores the most recent
+          * virtual X11 position, even if the application sends no final warp.
++         *
++         * If the application sent a hidden warp with no newer physical
++         * motion, use that exact target. Relative events which predate the
++         * warp can still be queued in mieq and must not move the release
++         * position away from an immediately-following ungrab.
+          */
+         if (xwl_seat->xwl_screen->pointer_warp) {
+-            miPointerGetPosition(xwl_seat->pointer, &x, &y);
++            if (warp_emulator->release_warp_valid) {
++                x = warp_emulator->release_warp_x;
++                y = warp_emulator->release_warp_y;
++            } else {
++                miPointerGetPosition(xwl_seat->pointer, &x, &y);
++            }
++
++            /*
++             * KWin ignores direct warp requests while the pointer constraint
++             * is still active. Commit the same final hint before destroying
++             * the lock so its unlock path and pointer-warp-v1 converge on one
++             * position regardless of which one runs first.
++             */
++            xwl_pointer_warp_emulator_set_fake_pos(warp_emulator, x, y);
+             xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
+             xwl_seat_warp_pointer_v1(xwl_seat, x, y);
+             wl_display_flush(xwl_seat->xwl_screen->display);
+--- a/hw/xwayland/xwayland-input.h
++++ b/hw/xwayland/xwayland-input.h
+@@ -46,6 +46,11 @@ struct xwl_pointer_warp_emulator {
+     struct zwp_locked_pointer_v1 *locked_pointer;
+     Bool lock_active;
+     Bool destroy_on_lock;
++    Bool release_warp_valid;
++    Bool release_warp_was_grabbed;
++    int release_warp_x;
++    int release_warp_y;
++    CARD64 release_warp_time_us;
+ };
+ 
+ struct xwl_cursor {
+-- 
+2.53.0

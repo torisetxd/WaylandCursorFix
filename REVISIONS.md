@@ -1,5 +1,34 @@
 # Preserved revisions and bug split
 
+## Revision 8: atomic hidden-warp release
+
+The second live trace captured 36 grab/ungrab cycles from Badlion Minecraft.
+For every affected transition, the client sent the correct local center warp
+to `(1280, 690)` and immediately followed it with `UngrabPointer`. It never
+sent an off-screen or amplified warp. In failing cycles, KWin retained or
+resumed from the locked physical position, sometimes on DP-2.
+
+Xwayland delays showing a newly visible cursor for up to 5 ms. During that
+interval, queued relative camera motion can move its virtual pointer away from
+the game's final center warp. KWin also ignores a direct pointer-warp request
+while its pointer constraint is still active, leaving the later unlock hint as
+the authoritative fallback.
+
+`0003-xwayland-make-release-warp-atomic.patch` addresses that exact handoff:
+
+- A hidden warp becomes a release candidate.
+- Newer relative motion invalidates ordinary recenter candidates while the
+  grab remains active.
+- An immediately following explicit ungrab freezes the final candidate across
+  the delayed cursor-show interval.
+- Xwayland commits the selected target as the final unlock hint and issues the
+  direct warp to the same target.
+
+There is no persistent lock, stable anchor across ordinary movement,
+forced-immediate cursor show, sleep, timer, or added Wayland round trip.
+Revision 7 remains tagged and packaged as the rollback baseline until revision
+8 has been validated in the original Minecraft reproduction.
+
 ## Revision 7: stale pre-warp motion barrier
 
 Revision 7 is the preserved baseline for further work. It consists of:
@@ -32,7 +61,8 @@ persistent-lock, and forced-immediate-cursor-show change.
    observed about 2,000 pixels of travel in roughly 130 ms. Native Wayland
    applications do not show this behavior, so this remains an X11/Xwayland
    grab-transition bug rather than a physical-device or compositor-wide
-   acceleration problem.
+   acceleration problem. Revision 8 targets the traced atomic-release failure;
+   it remains test-pending in the original reproduction.
 
    This is separate from the visible-warp delivery/order bug. Revisions 5 and
    6 attempted to solve the resulting release offset with a persistent lock
@@ -41,7 +71,14 @@ persistent-lock, and forced-immediate-cursor-show change.
 
 ## Reproducible artifacts
 
-- Package: `xorg-xwayland-visible-warp-24.1.13-7-x86_64.pkg.tar.zst`
+- Revision-8 package:
+  `xorg-xwayland-visible-warp-24.1.13-8-x86_64.pkg.tar.zst`
+- Revision-8 package SHA-256:
+  `13f0da165e5dc73e40b4ea3a632f4b141995197b58e90a6dd6febcd4d20924b0`
+- Revision-8 packaged `/usr/bin/Xwayland` SHA-256:
+  `3b78541759005f058711d65bf942f1f1598e91bc2cec310ca4a93cdcbdf8c03b`
+
+- Revision-7 package: `xorg-xwayland-visible-warp-24.1.13-7-x86_64.pkg.tar.zst`
 - Package SHA-256:
   `eb756466d7ff7c8f974a8ef2e5297e104a6dbe51aaa463c2c0a29e901eebb95d`
 - Packaged `/usr/bin/Xwayland` SHA-256:

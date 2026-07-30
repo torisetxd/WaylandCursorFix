@@ -28,6 +28,15 @@ warp a millisecond later, without delaying the warp or suppressing subsequent
 motion. An event-driven pointer-lock fallback remains for compositors that do
 not advertise the dedicated protocol.
 
+Revision 8 also makes a hidden `WarpPointer` immediately followed by
+`UngrabPointer` an atomic release operation. Xwayland normally delays showing
+a newly visible cursor for up to 5 ms; relative camera motion could move its
+virtual pointer during that interval and make the cursor reappear far away.
+The patch freezes only the explicit final release target, commits it as the
+locked-pointer unlock hint, and sends the same direct warp. Ordinary recenter
+warps and games that do not send a final warp retain the revision-7 behavior.
+This adds no sleep, polling, timer, or compositor round trip.
+
 ## Install on CachyOS or Arch Linux
 
 Run as your normal user:
@@ -55,13 +64,19 @@ Confirm the package and running executable:
 The package is named `xorg-xwayland-visible-warp` and provides
 `xorg-xwayland`, so normal package dependency checks continue to work.
 
-The revision-7 package SHA-256 is:
+The revision-8 package SHA-256 is:
 
 ```text
-eb756466d7ff7c8f974a8ef2e5297e104a6dbe51aaa463c2c0a29e901eebb95d
+13f0da165e5dc73e40b4ea3a632f4b141995197b58e90a6dd6febcd4d20924b0
 ```
 
-The last known-better revision remains available for immediate rollback:
+The preserved revision-7 baseline is available for immediate rollback:
+
+```sh
+./rollback-to-v7.sh
+```
+
+The older revision-4 fallback is also retained:
 
 ```sh
 ./rollback-to-v4.sh
