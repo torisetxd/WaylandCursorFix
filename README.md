@@ -1,4 +1,8 @@
-# Immediate visible pointer warps for Xwayland
+# WaylandCursorFix
+
+System-wide Xwayland cursor warp and grab-release fix for X11 games on
+Wayland. Revision 8 is the current test candidate; revision 7 remains a
+known-good rollback baseline.
 
 This is a system-wide Xwayland patch for games that call `XWarpPointer` (or
 the equivalent XI2 request) and expect the real mouse pointer to move. Stock
@@ -45,10 +49,9 @@ Run as your normal user:
 ./install.sh
 ```
 
-The repository includes a locally built package for this machine. The
-installer uses it directly, so installation does not require a compiler or
-build dependencies. If the package file is removed, the same script rebuilds
-it from the pinned source and patch.
+If a matching local package is present, the installer uses it directly. On a
+fresh clone it downloads the pinned Xwayland source and builds the package via
+`makepkg`, installing build dependencies through pacman as needed.
 
 Then reboot, or log out of the Plasma Wayland session and back in. Existing
 X11 applications must close when Xwayland restarts, which is why the installer
@@ -102,6 +105,33 @@ this patch.
 ```
 
 Log out and back in after restoring the distribution package.
+
+## Build manually
+
+The package is reproducible from the pinned Xwayland 24.1.13 tarball:
+
+```sh
+makepkg --syncdeps --install
+```
+
+The three numbered patches are applied in order by `PKGBUILD`. A clean build
+requires roughly the normal Xwayland Arch packaging dependencies; generated
+trees are intentionally ignored by Git.
+
+## Diagnostics
+
+The `diagnostics/` directory contains read-only tracing tools used to verify
+X11 grab/warp request ordering and KWin cursor movement. They are not needed
+at runtime and no diagnostic service is installed by this project.
+
+## Source history
+
+The preserved revisions are available as Git tags:
+
+- `v7-stale-pre-warp-barrier` — rollback baseline.
+- `v8-atomic-release` — current hidden-warp/ungrab handoff fix.
+
+See [REVISIONS.md](REVISIONS.md) for the evidence and exact bug split.
 
 ## Updating
 
