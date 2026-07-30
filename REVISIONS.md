@@ -24,11 +24,20 @@ persistent-lock, and forced-immediate-cursor-show change.
    but stock Xwayland ignores it or a stale Wayland absolute motion event
    overwrites it. The v4 direct warp and v7 ordering barrier address this bug.
 
-2. **Hidden grab/ungrab restoration bug:** active relative motion during a
-   transition to a menu or inventory can still leave the released cursor at an
-   offset, potentially on another monitor. This is a separate unresolved bug.
-   Revisions 5 and 6 attempted to solve it with a persistent lock and stable
-   anchor, but regressed behavior and must not be treated as a valid baseline.
+2. **Relative-motion amplification during ungrab:** if a menu or inventory
+   opens while the mouse is actively moving in grabbed camera mode, the latest
+   motion vector can be preserved in the correct direction but amplified by
+   roughly two orders of magnitude. The released cursor can consequently
+   travel thousands of pixels or cross onto another monitor. The live trace
+   observed about 2,000 pixels of travel in roughly 130 ms. Native Wayland
+   applications do not show this behavior, so this remains an X11/Xwayland
+   grab-transition bug rather than a physical-device or compositor-wide
+   acceleration problem.
+
+   This is separate from the visible-warp delivery/order bug. Revisions 5 and
+   6 attempted to solve the resulting release offset with a persistent lock
+   and stable anchor, but did not address the amplified motion and regressed
+   behavior. They must not be treated as a valid baseline.
 
 ## Reproducible artifacts
 
