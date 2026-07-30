@@ -1,0 +1,4 @@
+3a3922544e9a80bdfc138e85b0707169398bca19c15b3a836d6408fc48948b49  0001-xwayland-honor-visible-pointer-warps.patch
+76c1f8efc02019764cd6de22fd6e685f22b5729b12f87bc8ed2dd893dafd3363  0002-xwayland-drop-stale-pre-warp-motion.patch
+926900e8015420111166145ae68a5b466de91569e12f32b911292505381a2a0e  xorg-xwayland-visible-warp-24.1.13-4-x86_64.pkg.tar.zst
+eb756466d7ff7c8f974a8ef2e5297e104a6dbe51aaa463c2c0a29e901eebb95d  xorg-xwayland-visible-warp-24.1.13-7-x86_64.pkg.tar.zst

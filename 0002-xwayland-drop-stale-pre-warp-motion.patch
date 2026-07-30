@@ -1,0 +1,179 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Thu, 31 Jul 2026 01:00:00 +0300
+Subject: [PATCH] xwayland: drop stale absolute motion before warp acknowledgement
+
+The pointer-warp protocol is asynchronous. Absolute pointer frames already
+sent by the compositor can arrive after ProcWarpPointer updates Xwayland's
+sprite and overwrite the requested position with the pre-warp location.
+
+Track each direct warp through a wl_display.sync callback. Until either the
+compositor reports the requested target or the sync callback completes, drop
+absolute positions which do not match the target. At the sync boundary, also
+discard a stale motion stored without its separate wl_pointer.frame message.
+This bounds suppression without a timer if a compositor rejects a warp.
+---
+ hw/xwayland/xwayland-input.c | 115 ++++++++++++++++++++++++++++++++++++
+ hw/xwayland/xwayland-input.h |   4 ++
+ 2 files changed, 119 insertions(+)
+
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -686,6 +686,27 @@ dispatch_absolute_motion(struct xwl_seat *xwl_seat)
+     x = drawable_x + event_x;
+     y = drawable_y + event_y;
+ 
++    /*
++     * A compositor warp is asynchronous. Motion frames which were already
++     * queued before the warp request can otherwise overwrite the X11
++     * position after ProcWarpPointer has moved it to the requested target.
++     *
++     * Keep dropping only those pre-warp absolute positions until KWin sends
++     * the target position. A wl_display.sync request placed directly after
++     * the warp bounds this suppression even if the compositor rejects the
++     * request, so normal pointer input can never remain suppressed.
++     */
++    if (xwl_seat->pointer_warp_sync &&
++        !xwl_seat->pointer_warp_target_reached) {
++        if (x < xwl_seat->pointer_warp_target_x - 1 ||
++            x > xwl_seat->pointer_warp_target_x + 1 ||
++            y < xwl_seat->pointer_warp_target_y - 1 ||
++            y > xwl_seat->pointer_warp_target_y + 1)
++            return;
++
++        xwl_seat->pointer_warp_target_reached = TRUE;
++    }
++
+     valuator_mask_zero(&mask);
+     valuator_mask_set(&mask, 0, x);
+     valuator_mask_set(&mask, 1, y);
+@@ -701,6 +722,34 @@ dispatch_absolute_motion(struct xwl_seat *xwl_seat)
+     QueuePointerEvents(device, MotionNotify, 0, flags, &mask);
+ }
+ 
++static Bool
++xwl_seat_pending_absolute_is_warp_target(struct xwl_seat *xwl_seat)
++{
++    struct xwl_screen *xwl_screen = xwl_seat->xwl_screen;
++    int event_x;
++    int event_y;
++    int x;
++    int y;
++
++    if (!xwl_seat->pending_pointer_event.has_absolute ||
++        !xwl_seat->focus_window)
++        return FALSE;
++
++    event_x = wl_fixed_to_int(xwl_seat->pending_pointer_event.x);
++    event_y = wl_fixed_to_int(xwl_seat->pending_pointer_event.y);
++    event_x *= xwl_screen->global_surface_scale;
++    event_y *= xwl_screen->global_surface_scale;
++    event_x *= xwl_seat->focus_window->viewport_scale_x;
++    event_y *= xwl_seat->focus_window->viewport_scale_y;
++    x = xwl_seat->focus_window->toplevel->drawable.x + event_x;
++    y = xwl_seat->focus_window->toplevel->drawable.y + event_y;
++
++    return x >= xwl_seat->pointer_warp_target_x - 1 &&
++           x <= xwl_seat->pointer_warp_target_x + 1 &&
++           y >= xwl_seat->pointer_warp_target_y - 1 &&
++           y <= xwl_seat->pointer_warp_target_y + 1;
++}
++
+ static void
+ dispatch_relative_motion(struct xwl_seat *xwl_seat)
+ {
+@@ -2012,6 +2061,11 @@ xwl_seat_destroy(struct xwl_seat *xwl_seat)
+ 
+     release_tablet_manager_seat(xwl_seat);
+ 
++    if (xwl_seat->pointer_warp_sync) {
++        wl_callback_destroy(xwl_seat->pointer_warp_sync);
++        xwl_seat->pointer_warp_sync = NULL;
++    }
++
+     release_grab(xwl_seat);
+     wl_seat_destroy(xwl_seat->seat);
+     xwl_cursor_release(&xwl_seat->cursor);
+@@ -3292,6 +3346,60 @@ xwl_xy_to_window(ScreenPtr screen, SpritePtr sprite, int x, int y)
+ }
+ 
+ static void
++xwl_pointer_warp_sync_handle_done(void *data,
++                                  struct wl_callback *callback,
++                                  uint32_t callback_data)
++{
++    struct xwl_seat *xwl_seat = data;
++
++    (void) callback_data;
++
++    if (xwl_seat->pointer_warp_sync == callback) {
++        /*
++         * wl_pointer.motion and wl_pointer.frame are separate messages.
++         * The sync callback can therefore arrive after a stale motion was
++         * stored but before its frame dispatches it. Remove that pending
++         * position at the protocol boundary before ending suppression.
++         */
++        if (!xwl_seat->pointer_warp_target_reached &&
++            xwl_seat->pending_pointer_event.has_absolute) {
++            if (xwl_seat_pending_absolute_is_warp_target(xwl_seat))
++                xwl_seat->pointer_warp_target_reached = TRUE;
++            else
++                xwl_seat->pending_pointer_event.has_absolute = FALSE;
++        }
++        xwl_seat->pointer_warp_sync = NULL;
++    }
++
++    wl_callback_destroy(callback);
++}
++
++static const struct wl_callback_listener pointer_warp_sync_listener = {
++    .done = xwl_pointer_warp_sync_handle_done,
++};
++
++static void
++xwl_seat_arm_pointer_warp_barrier(struct xwl_seat *xwl_seat, int x, int y)
++{
++    struct wl_callback *callback;
++
++    if (xwl_seat->pointer_warp_sync) {
++        wl_callback_destroy(xwl_seat->pointer_warp_sync);
++        xwl_seat->pointer_warp_sync = NULL;
++    }
++
++    callback = wl_display_sync(xwl_seat->xwl_screen->display);
++    if (!callback)
++        return;
++
++    xwl_seat->pointer_warp_target_x = x;
++    xwl_seat->pointer_warp_target_y = y;
++    xwl_seat->pointer_warp_target_reached = FALSE;
++    xwl_seat->pointer_warp_sync = callback;
++    wl_callback_add_listener(callback, &pointer_warp_sync_listener, xwl_seat);
++}
++
++static void
+ xwl_seat_warp_pointer_v1(struct xwl_seat *xwl_seat, int x, int y)
+ {
+     struct xwl_screen *xwl_screen = xwl_seat->xwl_screen;
+@@ -3323,6 +3431,7 @@ xwl_seat_warp_pointer_v1(struct xwl_seat *xwl_seat, int x, int y)
+                                     wl_fixed_from_double(sx),
+                                     wl_fixed_from_double(sy),
+                                     xwl_seat->pointer_enter_serial);
++    xwl_seat_arm_pointer_warp_barrier(xwl_seat, x, y);
+ }
+ 
+ static void
+--- a/hw/xwayland/xwayland-input.h
++++ b/hw/xwayland/xwayland-input.h
+@@ -100,6 +100,10 @@ struct xwl_seat {
+     struct xorg_list sync_pending;
+ 
+     struct xwl_pointer_warp_emulator *pointer_warp_emulator;
++    struct wl_callback *pointer_warp_sync;
++    Bool pointer_warp_target_reached;
++    int pointer_warp_target_x;
++    int pointer_warp_target_y;
+ 
+     struct xwl_window *cursor_confinement_window;
+     struct zwp_confined_pointer_v1 *confined_pointer;
+-- 
+2.53.0

@@ -1,0 +1,403 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Thu, 31 Jul 2026 00:00:00 +0300
+Subject: [PATCH] xwayland: use pointer-warp-v1 and track hidden grabs
+
+Stock Xwayland moves its internal X11 sprite but deliberately drops real
+pointer warps while the cursor is visible. This leaves X11 applications and
+the compositor disagreeing about the pointer position.
+
+Use the dedicated wp_pointer_warp_v1 protocol for visible-cursor warps. It is
+a direct, one-way compositor request and avoids the activation races and side
+effects inherent in abusing pointer-lock position hints.
+
+When a hidden-cursor grab ends, destroy the relative-pointer lock and issue a
+direct warp to the latest virtual X11 position. This restores the pointer even
+when an application sends no final explicit warp.
+
+Start that tracking as soon as a focused client explicitly grabs and hides
+the pointer, even when the X11 grab uses confineTo=None. LWJGL 2 uses this
+form and only sends a warp after its virtual pointer reaches a window edge;
+waiting for that first warp made restoration intermittent.
+
+Keep an event-driven pointer-lock fallback for compositors without
+pointer-warp-v1. Wait for the locked event before destroying the fallback lock
+because a cursor position hint only applies when an active lock is released.
+
+The existing focus and destination bounds checks remain in force. Also fix
+the fallback bounds expression, whose OR operators accepted every coordinate.
+---
+ hw/xwayland/meson.build       |   3 +
+ hw/xwayland/xwayland-input.c  | 206 +++++++++++++++++++++++++++++++++++++++---
+ hw/xwayland/xwayland-input.h  |   2 +
+ hw/xwayland/xwayland-screen.h |   1 +
+ meson.build                   |   2 +-
+ 5 files changed, 199 insertions(+), 15 deletions(-)
+
+diff --git a/hw/xwayland/meson.build b/hw/xwayland/meson.build
+index 9fff6445d..f7f69673c 100644
+--- a/hw/xwayland/meson.build
++++ b/hw/xwayland/meson.build
+@@ -51,6 +51,7 @@ xwayland_shell_xml = join_paths(protodir, 'staging', 'xwayland-shell', 'xwayland
+ tearing_xml = join_paths(protodir, 'staging', 'tearing-control', 'tearing-control-v1.xml')
+ fractional_scale_xml = join_paths(protodir, 'staging', 'fractional-scale', 'fractional-scale-v1.xml')
+ syncobj_xml = join_paths(protodir, 'staging', 'linux-drm-syncobj', 'linux-drm-syncobj-v1.xml')
++pointer_warp_xml = join_paths(protodir, 'staging', 'pointer-warp', 'pointer-warp-v1.xml')
+ 
+ client_header = generator(scanner,
+     output : '@BASENAME@-client-protocol.h',
+@@ -82,6 +83,7 @@ srcs += client_header.process(xwayland_shell_xml)
+ srcs += client_header.process(tearing_xml)
+ srcs += client_header.process(fractional_scale_xml)
+ srcs += client_header.process(syncobj_xml)
++srcs += client_header.process(pointer_warp_xml)
+ srcs += code.process(relative_xml)
+ srcs += code.process(pointer_xml)
+ srcs += code.process(gestures_xml)
+@@ -97,6 +99,7 @@ srcs += code.process(xwayland_shell_xml)
+ srcs += code.process(tearing_xml)
+ srcs += code.process(fractional_scale_xml)
+ srcs += code.process(syncobj_xml)
++srcs += code.process(pointer_warp_xml)
+ 
+ if build_ei
+     xwayland_dep += libei_dep
+diff --git a/hw/xwayland/xwayland-input.c b/hw/xwayland/xwayland-input.c
+index 8231c10b9..b2e843143 100644
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -50,6 +50,7 @@
+ #endif
+ 
+ #include "pointer-constraints-unstable-v1-client-protocol.h"
++#include "pointer-warp-v1-client-protocol.h"
+ #include "relative-pointer-unstable-v1-client-protocol.h"
+ #include "tablet-unstable-v2-client-protocol.h"
+ #include "pointer-gestures-unstable-v1-client-protocol.h"
+@@ -3074,6 +3075,16 @@ init_pointer_constraints(struct xwl_screen *xwl_screen,
+                          1);
+ }
+ 
++static void
++init_pointer_warp(struct xwl_screen *xwl_screen,
++                  uint32_t id, uint32_t version)
++{
++    xwl_screen->pointer_warp =
++        wl_registry_bind(xwl_screen->registry, id,
++                         &wp_pointer_warp_v1_interface,
++                         1);
++}
++
+ static void
+ init_pointer_gestures(struct xwl_screen *xwl_screen,
+                       uint32_t id, uint32_t version)
+@@ -3157,6 +3168,8 @@ input_handler(void *data, struct wl_registry *registry, uint32_t id,
+         maybe_init_relative_pointer_listeners_after_capabilities(xwl_screen);
+     } else if (strcmp(interface, zwp_pointer_constraints_v1_interface.name) == 0) {
+         init_pointer_constraints(xwl_screen, id, version);
++    } else if (strcmp(interface, wp_pointer_warp_v1_interface.name) == 0) {
++        init_pointer_warp(xwl_screen, id, version);
+     } else if (strcmp(interface, zwp_pointer_gestures_v1_interface.name) == 0) {
+         init_pointer_gestures(xwl_screen, id, version);
+         maybe_init_pointer_gesture_listeners_after_capabilities(xwl_screen);
+@@ -3278,6 +3291,40 @@ xwl_seat_clear_touch(struct xwl_seat *xwl_seat, struct xwl_window *xwl_window)
+     }
+ }
+ 
++static void
++xwl_seat_warp_pointer_v1(struct xwl_seat *xwl_seat, int x, int y)
++{
++    struct xwl_screen *xwl_screen = xwl_seat->xwl_screen;
++    struct xwl_window *focus_window = xwl_seat->focus_window;
++    WindowPtr window;
++    double sx, sy;
++
++    if (!xwl_screen->pointer_warp ||
++        !xwl_seat->wl_pointer ||
++        !focus_window ||
++        !xwl_seat->pointer_enter_serial)
++        return;
++
++    window = focus_window->toplevel;
++    if (x < window->drawable.x ||
++        y < window->drawable.y ||
++        x >= (window->drawable.x + window->drawable.width) ||
++        y >= (window->drawable.y + window->drawable.height))
++        return;
++
++    sx = (double) (x - window->drawable.x) /
++                  focus_window->viewport_scale_x;
++    sy = (double) (y - window->drawable.y) /
++                  focus_window->viewport_scale_y;
++
++    wp_pointer_warp_v1_warp_pointer(xwl_screen->pointer_warp,
++                                    focus_window->surface,
++                                    xwl_seat->wl_pointer,
++                                    wl_fixed_from_double(sx),
++                                    wl_fixed_from_double(sy),
++                                    xwl_seat->pointer_enter_serial);
++}
++
+ static void
+ xwl_pointer_warp_emulator_set_fake_pos(struct xwl_pointer_warp_emulator *warp_emulator,
+                                        int x,
+@@ -3297,9 +3344,9 @@ xwl_pointer_warp_emulator_set_fake_pos(struct xwl_pointer_warp_emulator *warp_em
+         return;
+ 
+     window = focus_window->toplevel;
+-    if (x >= window->drawable.x ||
+-        y >= window->drawable.y ||
+-        x < (window->drawable.x + window->drawable.width) ||
++    if (x >= window->drawable.x &&
++        y >= window->drawable.y &&
++        x < (window->drawable.x + window->drawable.width) &&
+         y < (window->drawable.y + window->drawable.height)) {
+         sx = round((double) (x - window->drawable.x) /
+                              focus_window->viewport_scale_x);
+@@ -3321,6 +3368,43 @@ xwl_pointer_warp_emulator_is_locked(struct xwl_pointer_warp_emulator *warp_emula
+         return FALSE;
+ }
+ 
++static void
++xwl_pointer_warp_emulator_handle_locked(void *data,
++                                        struct zwp_locked_pointer_v1 *locked_pointer)
++{
++    struct xwl_pointer_warp_emulator *warp_emulator = data;
++    struct xwl_seat *xwl_seat = warp_emulator->xwl_seat;
++
++    (void) locked_pointer;
++    warp_emulator->lock_active = TRUE;
++
++    if (warp_emulator->destroy_on_lock) {
++        xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
++        wl_display_flush(xwl_seat->xwl_screen->display);
++    }
++}
++
++static void
++xwl_pointer_warp_emulator_handle_unlocked(void *data,
++                                          struct zwp_locked_pointer_v1 *locked_pointer)
++{
++    struct xwl_pointer_warp_emulator *warp_emulator = data;
++    struct xwl_seat *xwl_seat = warp_emulator->xwl_seat;
++
++    (void) locked_pointer;
++    warp_emulator->lock_active = FALSE;
++
++    if (warp_emulator->destroy_on_lock) {
++        xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
++        wl_display_flush(xwl_seat->xwl_screen->display);
++    }
++}
++
++static const struct zwp_locked_pointer_v1_listener locked_pointer_listener = {
++    .locked = xwl_pointer_warp_emulator_handle_locked,
++    .unlocked = xwl_pointer_warp_emulator_handle_unlocked,
++};
++
+ static void
+ xwl_pointer_warp_emulator_lock(struct xwl_pointer_warp_emulator *warp_emulator)
+ {
+@@ -3338,6 +3422,9 @@ xwl_pointer_warp_emulator_lock(struct xwl_pointer_warp_emulator *warp_emulator)
+                                                 xwl_seat->wl_pointer,
+                                                 NULL,
+                                                 ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);
++    zwp_locked_pointer_v1_add_listener(warp_emulator->locked_pointer,
++                                       &locked_pointer_listener,
++                                       warp_emulator);
+ }
+ 
+ static void
+@@ -3481,10 +3568,25 @@ xwl_seat_emulate_pointer_warp(struct xwl_seat *xwl_seat,
+                               SpritePtr sprite,
+                               int x, int y)
+ {
+-    if (!xwl_seat_can_emulate_pointer_warp(xwl_seat))
++    Bool visible_cursor;
++
++    if (!xwl_seat)
+         return;
+ 
+-    if (xwl_seat->x_cursor != NULL)
++    visible_cursor = xwl_seat->x_cursor != NULL;
++
++    /*
++     * The pointer-warp protocol is a direct, single-request compositor warp.
++     * Prefer it for visible cursors; unlike the pointer-lock position-hint
++     * fallback, it has no activation race or lock/unlock side effects.
++     */
++    if (visible_cursor && xwl_seat->xwl_screen->pointer_warp) {
++        xwl_seat_warp_pointer_v1(xwl_seat, x, y);
++        wl_display_flush(xwl_seat->xwl_screen->display);
++        return;
++    }
++
++    if (!xwl_seat_can_emulate_pointer_warp(xwl_seat))
+         return;
+ 
+     if (!xwl_seat->pointer_warp_emulator)
+@@ -3493,20 +3595,53 @@ xwl_seat_emulate_pointer_warp(struct xwl_seat *xwl_seat,
+     if (!xwl_seat->pointer_warp_emulator)
+         return;
+ 
++    xwl_seat->pointer_warp_emulator->destroy_on_lock = visible_cursor;
++
+     xwl_pointer_warp_emulator_warp(xwl_seat->pointer_warp_emulator,
+                                    xwl_window,
+                                    sprite,
+                                    x, y);
++
++    /*
++     * Hidden-cursor warps keep the lock alive so relative motion can update
++     * Xwayland's virtual pointer position without the real pointer reaching
++     * a surface edge.
++     *
++     * With a visible cursor, use the lock only as an event-driven transport
++     * for the cursor position hint. Once the compositor confirms that the
++     * lock is active, destroying it makes the compositor apply the hint.
++     * If an existing hidden-cursor lock is already active, it can be
++     * destroyed immediately.
++     */
++    if (visible_cursor && xwl_seat->pointer_warp_emulator->lock_active) {
++        xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
++        wl_display_flush(xwl_seat->xwl_screen->display);
++    } else if (visible_cursor) {
++        wl_display_flush(xwl_seat->xwl_screen->display);
++    }
+ }
+ 
+ static Bool
+ xwl_seat_maybe_lock_on_hidden_cursor(struct xwl_seat *xwl_seat)
+ {
+     struct xwl_screen *xwl_screen = xwl_seat->xwl_screen;
++    GrabInfoPtr grab_info;
++    struct xwl_window *grab_window = NULL;
++    Bool explicit_pointer_grab = FALSE;
+ 
++    if (!xwl_seat_can_emulate_pointer_warp(xwl_seat))
++        return FALSE;
++
+-    /* Some clients use hidden cursor+confineTo+relative motion
+-     * to implement infinite panning (eg. 3D views), lock the
+-     * pointer for so the relative pointer is used.
++    /*
++     * Some clients use hidden cursor+confineTo+relative motion to implement
++     * infinite panning (eg. 3D views). Others, notably LWJGL 2, explicitly
++     * grab and hide the cursor but pass confineTo=None, then warp only when
++     * their virtual pointer approaches a window edge.
++     *
++     * Start the relative-pointer lock for either form. Waiting for the first
++     * XWarpPointer request loses the grab's initial virtual position and
++     * makes cursor restoration depend on whether the user happened to reach
++     * an edge before ungrabbing.
+      */
+     if (xwl_seat->x_cursor)
+         return FALSE;
+@@ -3517,7 +3652,16 @@ xwl_seat_maybe_lock_on_hidden_cursor(struct xwl_seat *xwl_seat)
+     if (!xwl_screen->rootless)
+         return FALSE;
+ 
+-    if (xwl_seat->cursor_confinement_window != xwl_seat->focus_window)
++    grab_info = &xwl_seat->pointer->deviceGrab;
++    if (grab_info->grab &&
++        !grab_info->fromPassiveGrab &&
++        !grab_info->implicitGrab) {
++        grab_window = xwl_window_from_window(grab_info->grab->window);
++        explicit_pointer_grab = grab_window == xwl_seat->focus_window;
++    }
++
++    if (xwl_seat->cursor_confinement_window != xwl_seat->focus_window &&
++        !explicit_pointer_grab)
+         return FALSE;
+ 
+     if (xwl_seat->confined_pointer)
+@@ -3532,11 +3676,45 @@ void
+ xwl_seat_cursor_visibility_changed(struct xwl_seat *xwl_seat)
+ {
+     if (xwl_seat->pointer_warp_emulator && xwl_seat->x_cursor != NULL) {
+-        xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
+-    } else if (!xwl_seat->x_cursor && xwl_seat->cursor_confinement_window) {
+-        /* If the cursor goes hidden as is confined, lock it for
+-         * relative motion to work. */
+-        xwl_seat_maybe_lock_on_hidden_cursor(xwl_seat);
++        struct xwl_pointer_warp_emulator *warp_emulator =
++            xwl_seat->pointer_warp_emulator;
++        int x, y;
++
++        /*
++         * A direct warp after unlocking reliably restores the most recent
++         * virtual X11 position, even if the application sends no final warp.
++         */
++        if (xwl_seat->xwl_screen->pointer_warp) {
++            miPointerGetPosition(xwl_seat->pointer, &x, &y);
++            xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
++            xwl_seat_warp_pointer_v1(xwl_seat, x, y);
++            wl_display_flush(xwl_seat->xwl_screen->display);
++            return;
++        }
++
++        /*
++         * Unlock at the last virtual pointer position. If the compositor has
++         * not activated the lock yet, wait for its locked event so destroying
++         * the object cannot discard the position hint.
++         */
++        warp_emulator->destroy_on_lock = TRUE;
++        if (!warp_emulator->locked_pointer || warp_emulator->lock_active) {
++            xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
++            wl_display_flush(xwl_seat->xwl_screen->display);
++        }
++    } else if (!xwl_seat->x_cursor) {
++        if (xwl_seat->pointer_warp_emulator) {
++            /* A visible-cursor warp may still be waiting for activation. */
++            xwl_seat->pointer_warp_emulator->destroy_on_lock = FALSE;
++        } else {
++            /*
++             * Lock on either confinement or an explicit X11 pointer grab.
++             * This also covers clients such as LWJGL 2 that grab with
++             * confineTo=None and therefore never populate
++             * cursor_confinement_window.
++             */
++            xwl_seat_maybe_lock_on_hidden_cursor(xwl_seat);
++        }
+     }
+ }
+ 
+diff --git a/hw/xwayland/xwayland-input.h b/hw/xwayland/xwayland-input.h
+index 9a2a40d72..d1b5f5648 100644
+--- a/hw/xwayland/xwayland-input.h
++++ b/hw/xwayland/xwayland-input.h
+@@ -44,6 +44,8 @@ struct xwl_pointer_warp_emulator {
+     struct xwl_seat *xwl_seat;
+     struct xwl_window *locked_window;
+     struct zwp_locked_pointer_v1 *locked_pointer;
++    Bool lock_active;
++    Bool destroy_on_lock;
+ };
+ 
+ struct xwl_cursor {
+diff --git a/hw/xwayland/xwayland-screen.h b/hw/xwayland/xwayland-screen.h
+index 9751bd25d..b77f006e2 100644
+--- a/hw/xwayland/xwayland-screen.h
++++ b/hw/xwayland/xwayland-screen.h
+@@ -105,6 +105,7 @@ struct xwl_screen {
+     struct xdg_wm_base *xdg_wm_base;
+     struct zwp_relative_pointer_manager_v1 *relative_pointer_manager;
+     struct zwp_pointer_constraints_v1 *pointer_constraints;
++    struct wp_pointer_warp_v1 *pointer_warp;
+     struct zwp_pointer_gestures_v1 *pointer_gestures;
+     struct zwp_xwayland_keyboard_grab_manager_v1 *wp_grab;
+     struct zwp_keyboard_shortcuts_inhibit_manager_v1 *shortcuts_inhibit_manager;
+diff --git a/meson.build b/meson.build
+index 737cc8f79..351a19ca8 100644
+--- a/meson.build
++++ b/meson.build
+@@ -64,7 +64,7 @@ libdrm_req = '>= 2.4.116'
+ libselinux_req = '>= 2.0.86'
+ xext_req = '>= 1.0.99.4'
+ wayland_req = '>= 1.21.0'
+-wayland_protocols_req = '>= 1.34'
++wayland_protocols_req = '>= 1.45'
+ gbm_req = '>= 10.2'
+ xshmfence_req = '>= 1.1'
+ 
+-- 
+2.53.0

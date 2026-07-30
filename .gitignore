@@ -1,0 +1,10 @@
+/.build-deps/
+/build-test/
+/pkg/
+/src/
+/upstream/
+/saved-revisions/*.bundle
+/diagnostics/x11-pointer-trace
+/*.tar.xz
+/*.tar.xz.sig
+/*.pkg.tar.zst
