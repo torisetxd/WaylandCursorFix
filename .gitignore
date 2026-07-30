@@ -5,6 +5,7 @@
 /upstream/
 /saved-revisions/*.bundle
 /diagnostics/x11-pointer-trace
+/diagnostics/x11-request-trace
 /*.tar.xz
 /*.tar.xz.sig
 /*.pkg.tar.zst

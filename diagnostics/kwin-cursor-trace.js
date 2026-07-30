@@ -1,7 +1,9 @@
 "use strict";
 
 const prefix = "WAYLANDCURSORFIX_KWIN";
-let previous = workspace.cursorPos;
+let initial = workspace.cursorPos;
+let previousX = initial.x;
+let previousY = initial.y;
 let previousScreen = "";
 
 function screenName(point) {
@@ -19,24 +21,25 @@ function logPosition(reason, point, dx, dy, output) {
         + " output=" + output);
 }
 
-previousScreen = screenName(previous);
-logPosition("start", previous, 0, 0, previousScreen);
+previousScreen = screenName(initial);
+logPosition("start", initial, 0, 0, previousScreen);
 
 workspace.cursorPosChanged.connect(function () {
     const current = workspace.cursorPos;
     const currentScreen = screenName(current);
-    const dx = current.x - previous.x;
-    const dy = current.y - previous.y;
+    const dx = current.x - previousX;
+    const dy = current.y - previousY;
     const screenChanged = currentScreen !== previousScreen;
 
     /*
-     * Normal physical motion is intentionally omitted. Pointer warps and
-     * cross-output transitions are the events relevant to this failure.
+     * Keep enough fast physical motion to identify amplification without
+     * logging every ordinary single-pixel update.
      */
-    if (screenChanged || Math.abs(dx) >= 32 || Math.abs(dy) >= 32)
+    if (screenChanged || Math.abs(dx) + Math.abs(dy) >= 12)
         logPosition(screenChanged ? "output-change" : "jump",
                     current, dx, dy, currentScreen);
 
-    previous = current;
+    previousX = current.x;
+    previousY = current.y;
     previousScreen = currentScreen;
 });
