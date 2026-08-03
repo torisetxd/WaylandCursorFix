@@ -1,0 +1,40 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Mon, 03 Aug 2026 11:45:00 +0300
+Subject: [PATCH] xwayland: skip the release warp while re-grabbed
+
+Xwayland delays showing a newly visible cursor for up to 5 ms. If the
+application re-grabs and re-hides the pointer during that interval (the
+Badlion/Minecraft menu spam pattern), the delayed show can still fire and
+run the revision-8 release branch while the new capture is active. That
+destroys the new capture's pointer lock and teleports the real pointer
+to the stale release target. The camera phase then runs without any
+pointer constraint and the following release restores nothing, which
+reads as a sudden large pointer displacement and a lost reset.
+
+Only run the release branch when no explicit pointer grab is active.
+With a grab active the lock and emulator belong to the ongoing capture
+and are kept alive, as in the revision-4 semantics.
+---
+ hw/xwayland/xwayland-input.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/hw/xwayland/xwayland-input.c b/hw/xwayland/xwayland-input.c
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -3835,6 +3835,16 @@
+         int x, y;
+ 
+         /*
++         * A delayed cursor show can fire while the application has
++         * already re-grabbed the pointer for continued capture. Running
++         * the release sequence now would destroy the new capture's
++         * lock and teleport the pointer to the stale release target.
++         * Nothing is released in that state; keep the emulator alive.
++         */
++        if (xwl_seat_has_explicit_pointer_grab(xwl_seat))
++            return;
++
++        /*
+          * A direct warp after unlocking reliably restores the most recent
+          * virtual X11 position, even if the application sends no final warp.
+          *
