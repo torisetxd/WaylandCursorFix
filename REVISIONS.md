@@ -1,5 +1,33 @@
 # Preserved revisions and bug split
 
+## Revision 10: warp→ungrab invalidation grace
+
+At ~1 kHz input rates, relative motion which physically lands inside the
+sub-millisecond window between `WarpPointer` and `UngrabPointer` request
+processing, or which the compositor had already delivered while the warp was
+being processed, invalidated the revision-8 release candidate. The release
+branch then fell back to the moved sprite position: direction-preserving,
+speed-correlated reset misses of one to several event deltas
+(`0005-xwayland-grace-warp-ungrab-race.patch`).
+
+Reproduced on KWin 6.6.4 with a RemoteDesktop-portal injector and the
+`race-client` harness in `.analysis/`: 9/40 tight-window releases restored
+1-2 event deltas past target; 15/15 releases with an 8 ms warp→ungrab split
+showed exactly the accumulated window deltas. XRecord traces show the real
+pair is processed within one server millisecond, so motion inside an 8 ms
+grace window cannot be meaningfully newer; capture-mode recenter warps
+(16+ ms apart) are still invalidated by the continuous motion that follows.
+
+## Revision 9: skip release while re-grabbed
+
+Xwayland's delayed cursor show can fire up to 5 ms after a release, while the
+game has already re-grabbed and re-hidden the pointer (Badlion/Minecraft menu
+spam). The revision-8 release branch fired during the new capture, destroyed
+its pointer lock and teleported the cursor to the stale target; the capture
+continued lock-free and the following release restored nothing.
+`0004-xwayland-skip-release-while-grabbed.patch` skips the release branch
+whenever an explicit pointer grab is active.
+
 ## Revision 8: atomic hidden-warp release
 
 The second live trace captured 36 grab/ungrab cycles from Badlion Minecraft.
@@ -70,6 +98,20 @@ persistent-lock, and forced-immediate-cursor-show change.
    behavior. They must not be treated as a valid baseline.
 
 ## Reproducible artifacts
+
+- Revision-10 package:
+  `xorg-xwayland-visible-warp-24.1.13-10-x86_64.pkg.tar.zst`
+- Revision-10 package SHA-256:
+  `6de438c5609116fcf825e8e348e063bbfc4c7f3a3d062de61a5ff743b7294771`
+- Revision-10 packaged `/usr/bin/Xwayland` SHA-256:
+  `62449f47dbd3bca6e00175915cdb657bfd6c900b4ba63cd08b67c460786b77cf`
+
+- Revision-9 package:
+  `xorg-xwayland-visible-warp-24.1.13-9-x86_64.pkg.tar.zst`
+- Revision-9 package SHA-256:
+  `51f5530f5a983530cb6232fb2439f325718dd5a65be792c7a00c6342631d1afa`
+- Revision-9 packaged `/usr/bin/Xwayland` SHA-256:
+  `9cc886474a0eea9b97e37dbe3eda89d1276fc14d9051f315316ced5ed02941fa`
 
 - Revision-8 package:
   `xorg-xwayland-visible-warp-24.1.13-8-x86_64.pkg.tar.zst`

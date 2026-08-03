@@ -1,7 +1,7 @@
 # WaylandCursorFix
 
 System-wide Xwayland cursor warp and grab-release fix for X11 games on
-Wayland. Revision 8 is the current test candidate; revision 7 remains a
+Wayland. Revision 10 is the current test candidate; revision 7 remains a
 known-good rollback baseline.
 
 This is a system-wide Xwayland patch for games that call `XWarpPointer` (or
@@ -41,6 +41,12 @@ locked-pointer unlock hint, and sends the same direct warp. Ordinary recenter
 warps and games that do not send a final warp retain the revision-7 behavior.
 This adds no sleep, polling, timer, or compositor round trip.
 
+Revision 9 keeps the release branch from firing while the game has already
+re-grabbed the pointer during Xwayland's delayed cursor-show interval.
+Revision 10 treats motion within 8 ms of the final warp as part of the
+warp→ungrab pair instead of as newer input, so high-polling-rate mice cannot
+break the atomic release with sub-millisecond in-flight events.
+
 ## Install on CachyOS or Arch Linux
 
 Run as your normal user:
@@ -67,10 +73,10 @@ Confirm the package and running executable:
 The package is named `xorg-xwayland-visible-warp` and provides
 `xorg-xwayland`, so normal package dependency checks continue to work.
 
-The revision-8 package SHA-256 is:
+The revision-10 package SHA-256 is:
 
 ```text
-13f0da165e5dc73e40b4ea3a632f4b141995197b58e90a6dd6febcd4d20924b0
+6de438c5609116fcf825e8e348e063bbfc4c7f3a3d062de61a5ff743b7294771
 ```
 
 The preserved revision-7 baseline is available for immediate rollback:
@@ -114,7 +120,7 @@ The package is reproducible from the pinned Xwayland 24.1.13 tarball:
 makepkg --syncdeps --install
 ```
 
-The three numbered patches are applied in order by `PKGBUILD`. A clean build
+The five numbered patches are applied in order by `PKGBUILD`. A clean build
 requires roughly the normal Xwayland Arch packaging dependencies; generated
 trees are intentionally ignored by Git.
 
@@ -129,7 +135,9 @@ at runtime and no diagnostic service is installed by this project.
 The preserved revisions are available as Git tags:
 
 - `v7-stale-pre-warp-barrier` — rollback baseline.
-- `v8-atomic-release` — current hidden-warp/ungrab handoff fix.
+- `v8-atomic-release` — hidden-warp/ungrab handoff fix.
+- `v9-skip-release-while-grabbed` — delayed-show/re-grab fix.
+- `v10-warp-ungrab-grace` — high-rate warp→ungrab race fix.
 
 See [REVISIONS.md](REVISIONS.md) for the evidence and exact bug split.
 

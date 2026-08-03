@@ -1,0 +1,62 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Mon, 03 Aug 2026 21:15:00 +0300
+Subject: [PATCH] xwayland: grace window for warp+ungrab release invalidation
+
+At high input rates (8 kHz-capable devices drawn at ~1 kHz), relative
+motion which physically lands inside the sub-millisecond window between
+WarpPointer and UngrabPointer request processing invalidates the frozen
+release candidate introduced by revision 8. The release branch then
+falls back to the moved sprite position, restoring the cursor a few
+accelerated deltas past the intended target: direction-preserving,
+speed-correlated reset misses on menu transitions.
+
+Relative events carry compositor dispatch timestamps, not request-order
+information, so in-flight delivery jitter also falsely reads as newer.
+Motion within 8 ms of the candidate warp cannot be meaningfully newer
+than a back-to-back pair: treat it as part of the pair. Capture-mode
+recenter warps (every frame, 16+ ms apart) are unaffected; their
+candidates are still invalidated by the continuous motion that follows.
+
+Reproduced on KWin 6.6.4 with a 1 kHz portal injector and the
+race-client harness: 9/40 tight-window releases restored 1-2 event
+deltas past target (6,4)/(12,8 px, dot>0); 15/15 8 ms-split releases
+showed exactly the 8 ms of accumulated deltas ((42..66),(28..44) px).
+---
+ hw/xwayland/xwayland-input.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -998,6 +998,8 @@
+     pointer_handle_axis_v120,
+ };
+ 
++#define RELEASE_WARP_GRACE_US 8000
++
+ static void
+ relative_pointer_handle_relative_motion(void *data,
+                                         struct zwp_relative_pointer_v1 *zwp_relative_pointer_v1,
+@@ -1022,10 +1024,20 @@
+      * active invalidates that target. Once the grab is released, freeze the
+      * target across Xwayland's delayed cursor-show interval. For confinement
+      * without an explicit grab, newer motion always invalidates it.
++     *
++     * Exceptions: games release capture with a warp+ungrab pair issued
++     * back-to-back in the same frame. At high input rates, motion which
++     * physically occurs inside the sub-millisecond window between the two
++     * requests, or which had already been delivered to the compositor while
++     * the warp was being processed, would falsely read as "newer" and break
++     * the pair's atomicity, restoring the drifted sprite instead of the
++     * warp target. Motion within a small grace window of the candidate
++     * warp is therefore not treated as newer.
+      */
+     if (warp_emulator &&
+         warp_emulator->release_warp_valid &&
+-        event_time_us > warp_emulator->release_warp_time_us &&
++        event_time_us >
++            warp_emulator->release_warp_time_us + RELEASE_WARP_GRACE_US &&
+         (!warp_emulator->release_warp_was_grabbed ||
+          xwl_seat_has_explicit_pointer_grab(xwl_seat)))
+         warp_emulator->release_warp_valid = FALSE;
+-- 
+2.53.0

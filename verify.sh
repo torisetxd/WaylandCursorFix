@@ -2,8 +2,8 @@
 set -euo pipefail
 
 expected_package='xorg-xwayland-visible-warp'
-expected_version='24.1.13-8'
-expected_binary_sha256='3b78541759005f058711d65bf942f1f1598e91bc2cec310ca4a93cdcbdf8c03b'
+expected_version='24.1.13-10'
+expected_binary_sha256='62449f47dbd3bca6e00175915cdb657bfd6c900b4ba63cd08b67c460786b77cf'
 
 if ! pacman -Q "${expected_package}" >/dev/null 2>&1; then
   printf '%s is not installed.\n' "${expected_package}" >&2
@@ -19,7 +19,7 @@ fi
 
 installed_binary_sha256="$(sha256sum /usr/bin/Xwayland | awk '{ print $1 }')"
 if [[ "${installed_binary_sha256}" != "${expected_binary_sha256}" ]]; then
-  printf '/usr/bin/Xwayland does not match the revision-8 package.\n' >&2
+  printf '/usr/bin/Xwayland does not match the revision-10 package.\n' >&2
   exit 3
 fi
 
