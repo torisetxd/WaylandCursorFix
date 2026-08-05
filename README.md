@@ -1,7 +1,7 @@
 # WaylandCursorFix
 
 System-wide Xwayland cursor warp and grab-release fix for X11 games on
-Wayland. Revision 10 is the current test candidate; revision 7 remains a
+Wayland. Revision 16 is the current release; revision 7 remains a
 known-good rollback baseline.
 
 This is a system-wide Xwayland patch for games that call `XWarpPointer` (or
@@ -47,6 +47,14 @@ Revision 10 treats motion within 8 ms of the final warp as part of the
 warp→ungrab pair instead of as newer input, so high-polling-rate mice cannot
 break the atomic release with sub-millisecond in-flight events.
 
+Revisions 11–16 close the compositor-side races: the release warp goes out
+only after a sync-ordered lock destruction (0008), a stale unlock hint
+triggers an immediate idempotent re-send capped at three warps (0009), and
+the lock destroy itself is held one frame so the compositor's
+double-buffered position hint has latched before the teardown reads it
+(0010). The full forensic record, evidence logs, and remaining risks live
+in [investigation/README.md](investigation/README.md).
+
 ## Install on CachyOS or Arch Linux
 
 Run as your normal user:
@@ -73,10 +81,10 @@ Confirm the package and running executable:
 The package is named `xorg-xwayland-visible-warp` and provides
 `xorg-xwayland`, so normal package dependency checks continue to work.
 
-The revision-10 package SHA-256 is:
+The revision-16 package SHA-256 is:
 
 ```text
-6de438c5609116fcf825e8e348e063bbfc4c7f3a3d062de61a5ff743b7294771
+0446a3d7cfb3aa987130bbdb93b6707e2a170bfee096536044b36e0553adf1cb
 ```
 
 The preserved revision-7 baseline is available for immediate rollback:
@@ -120,7 +128,7 @@ The package is reproducible from the pinned Xwayland 24.1.13 tarball:
 makepkg --syncdeps --install
 ```
 
-The five numbered patches are applied in order by `PKGBUILD`. A clean build
+The ten numbered patches are applied in order by `PKGBUILD`. A clean build
 requires roughly the normal Xwayland Arch packaging dependencies; generated
 trees are intentionally ignored by Git.
 

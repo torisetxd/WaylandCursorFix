@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-built_package="${project_dir}/xorg-xwayland-visible-warp-24.1.13-10-x86_64.pkg.tar.zst"
+built_package="${project_dir}/xorg-xwayland-visible-warp-24.1.13-16-x86_64.pkg.tar.zst"
 
 if [[ "$(id -u)" == 0 ]]; then
   printf 'Run this installer as your normal user, not as root.\n' >&2

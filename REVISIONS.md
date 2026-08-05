@@ -1,5 +1,29 @@
 # Preserved revisions and bug split
 
+## Revision 16: destroy-ordering races closed (current)
+
+Revisions 11–16 finish the residual "inventory opens at the last position
+instead of center, only while moving fast" case. Six WCF_DEBUG-instrumented
+live rounds proved two compositor-side races stacked on top of each other:
+
+- KWin applies `set_cursor_position_hint` values only through surface
+  Transactions (fence-gated, ≥1 frame late); destroying the locked pointer
+  in the same batch as the final hint commit applies the *previous frame's*
+  hint — the cursor visibly opens ~tens of pixels off and self-corrects
+  32–190 ms later.
+- libwayland destructor deferral means the direct `wp_pointer_warp_v1` can
+  still land while `m_locked` is set and be silently dropped.
+
+Fix chain: `0008` (destroy → `wl_display.sync` → warp ordering),
+`0009` (wrong-absolute ack → immediate idempotent re-send, capped),
+`0010` (hold the destroy ≈1 frame after the final hint commit so the hint
+is latched when teardown reads it). User-verified on v16: bug no longer
+reproducible; ~1-frame cosmetic shimmer remains.
+
+The complete forensic record (mechanisms, log excerpts, tooling, known
+risks incl. the unfixed out-of-surface branch) is in
+[investigation/README.md](investigation/README.md).
+
 ## Revision 10: warp→ungrab invalidation grace
 
 At ~1 kHz input rates, relative motion which physically lands inside the
@@ -99,36 +123,15 @@ persistent-lock, and forced-immediate-cursor-show change.
 
 ## Reproducible artifacts
 
-- Revision-10 package:
-  `xorg-xwayland-visible-warp-24.1.13-10-x86_64.pkg.tar.zst`
-- Revision-10 package SHA-256:
-  `6de438c5609116fcf825e8e348e063bbfc4c7f3a3d062de61a5ff743b7294771`
-- Revision-10 packaged `/usr/bin/Xwayland` SHA-256:
-  `62449f47dbd3bca6e00175915cdb657bfd6c900b4ba63cd08b67c460786b77cf`
+## Reproducible artifacts
 
-- Revision-9 package:
-  `xorg-xwayland-visible-warp-24.1.13-9-x86_64.pkg.tar.zst`
-- Revision-9 package SHA-256:
-  `51f5530f5a983530cb6232fb2439f325718dd5a65be792c7a00c6342631d1afa`
-- Revision-9 packaged `/usr/bin/Xwayland` SHA-256:
-  `9cc886474a0eea9b97e37dbe3eda89d1276fc14d9051f315316ced5ed02941fa`
+- Revision-16 package:
+  `xorg-xwayland-visible-warp-24.1.13-16-x86_64.pkg.tar.zst`
+- Revision-16 package SHA-256:
+  `0446a3d7cfb3aa987130bbdb93b6707e2a170bfee096536044b36e0553adf1cb`
+- Revision-16 packaged `/usr/bin/Xwayland` SHA-256:
+  `f33c531e0f50620cc7c6a0ab2ebde8d37f5b41f078a1123080d915c32808b7a2`
 
-- Revision-8 package:
-  `xorg-xwayland-visible-warp-24.1.13-8-x86_64.pkg.tar.zst`
-- Revision-8 package SHA-256:
-  `13f0da165e5dc73e40b4ea3a632f4b141995197b58e90a6dd6febcd4d20924b0`
-- Revision-8 packaged `/usr/bin/Xwayland` SHA-256:
-  `3b78541759005f058711d65bf942f1f1598e91bc2cec310ca4a93cdcbdf8c03b`
-
-- Revision-7 package: `xorg-xwayland-visible-warp-24.1.13-7-x86_64.pkg.tar.zst`
-- Package SHA-256:
-  `eb756466d7ff7c8f974a8ef2e5297e104a6dbe51aaa463c2c0a29e901eebb95d`
-- Packaged `/usr/bin/Xwayland` SHA-256:
-  `6e33f05e1a19d2e4dd9dda6580a65ef312866320c500a385b94bafd4ee02518e`
-- Last known-better fallback package:
-  `xorg-xwayland-visible-warp-24.1.13-4-x86_64.pkg.tar.zst`
-- Revision-4 package SHA-256:
-  `926900e8015420111166145ae68a5b466de91569e12f32b911292505381a2a0e`
-
-The Git tag `v7-stale-pre-warp-barrier` and the standalone bundle under
-`saved-revisions/` preserve the source independently of the build trees.
+Full per-revision artifact hashes (0001–0010 patches, packages v4–v16) are
+tracked in `SAVED_ARTIFACTS.sha256`. Git tags preserve source: `v7-*`,
+`v9-*`, `v10-*`, `v16-*`.

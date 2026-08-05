@@ -1,0 +1,294 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Mon, 03 Aug 2026 22:05:00 +0300
+Subject: [PATCH] xwayland: WCF_DEBUG release-path diagnostics
+
+Optional runtime logging for diagnosis of grab->ungrab restore failures
+on real game sessions. Set WCF_DEBUG=1 for journal output or
+WCF_DEBUG=/path/to/file to also append to a file. No behavioral change
+with the variable unset.
+
+Logs: pointer enter/leave (+grab state), hidden-cursor lock decisions,
+lock engage/unlock events, release-candidate set/invalidate (with
+timestamp gaps), release-branch entry/skip/decision (candidate vs
+fallback + coords), unlock-hint commits, pointer-warp-v1 sends or guard
+drops (missing serial/caps/focus, out-of-bounds target), and the first
+absolute pointer motion (position + delay) after each accepted warp_v1,
+to expose stale absolute events overwriting a restore.
+---
+ hw/xwayland/xwayland-input.c | 115 insertions(+), 7 deletions(-)
+ 1 file changed, 
+
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -57,6 +57,8 @@
+ #include "xwayland-keyboard-grab-unstable-v1-client-protocol.h"
+ #include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
+ 
++#include <stdarg.h>
++
+ #define SCROLL_AXIS_HORIZ 2
+ #define SCROLL_AXIS_VERT 3
+ 
+@@ -521,6 +523,45 @@
+ #undef NBUTTONS
+ }
+ 
++static FILE *
++wcf_debug_file(void)
++{
++    static FILE *f = (FILE *) -1;
++    if (f == (FILE *) -1) {
++        const char *env = getenv("WCF_DEBUG");
++        if (env && *env && strchr(env, '/'))
++            f = fopen(env, "a");
++        else
++            f = NULL;
++    }
++    return f;
++}
++
++static void _X_ATTRIBUTE_PRINTF(1, 2)
++wcf_log(const char *fmt, ...)
++{
++    static int enabled = -1;
++    va_list ap;
++    char buf[512];
++    FILE *f;
++
++    if (enabled < 0) {
++        const char *env = getenv("WCF_DEBUG");
++        enabled = env && *env;
++    }
++    if (!enabled)
++        return;
++
++    va_start(ap, fmt);
++    vsnprintf(buf, sizeof buf, fmt, ap);
++    va_end(ap);
++    ErrorF("WCF t_us=%lld %s", (long long) GetTimeInMicros(), buf);
++    if ((f = wcf_debug_file())) {
++        fprintf(f, "WCF t_us=%lld %s", (long long) GetTimeInMicros(), buf);
++        fflush(f);
++    }
++}
++
+ static void
+ pointer_handle_enter(void *data, struct wl_pointer *pointer,
+                      uint32_t serial, struct wl_surface *surface,
+@@ -556,6 +597,9 @@
+     xwl_seat->xwl_screen->serial = serial;
+     xwl_seat->pointer_enter_serial = serial;
+ 
++    wcf_log("enter serial=%u grabbed=%d\n",
++            serial, xwl_seat_has_explicit_pointer_grab(xwl_seat));
++
+     xwl_seat->focus_window = wl_surface_get_user_data(surface);
+     dx = xwl_seat->focus_window->toplevel->drawable.x;
+     dy = xwl_seat->focus_window->toplevel->drawable.y;
+@@ -629,6 +673,9 @@
+     Bool focus_lost = FALSE;
+ 
+     xwl_screen->serial = serial;
++    wcf_log("leave serial=%u grabbed=%d emulator=%d\n",
++            serial, xwl_seat_has_explicit_pointer_grab(xwl_seat),
++            xwl_seat->pointer_warp_emulator != NULL);
+     BUG_WARN(xwl_seat->pointer_enter_count == 0);
+     if (xwl_seat->pointer_enter_count > 0)
+         xwl_seat->pointer_enter_count--;
+@@ -848,6 +895,8 @@
+     xwl_seat->pending_pointer_event.has_horizontal_scroll_v120 = FALSE;
+ }
+ 
++static CARD64 wcf_last_v1_send_us;
++
+ static void
+ pointer_handle_motion(void *data, struct wl_pointer *pointer,
+                       uint32_t time, wl_fixed_t sx_w, wl_fixed_t sy_w)
+@@ -857,6 +906,18 @@
+     if (!xwl_seat->focus_window)
+         return;
+ 
++    if (wcf_last_v1_send_us) {
++        CARD64 now_us = GetTimeInMicros();
++        if ((int64_t)(now_us - wcf_last_v1_send_us) < 120000) {
++            wcf_log("post-warp absolute sx=%.0f sy=%.0f since_warp_us=%lld\n",
++                    wl_fixed_to_double(sx_w), wl_fixed_to_double(sy_w),
++                    (long long)(now_us - wcf_last_v1_send_us));
++            wcf_last_v1_send_us = 0;
++        } else {
++            wcf_last_v1_send_us = 0;
++        }
++    }
++
+     xwl_seat->pending_pointer_event.has_absolute = TRUE;
+     xwl_seat->pending_pointer_event.x = sx_w;
+     xwl_seat->pending_pointer_event.y = sy_w;
+@@ -1039,8 +1100,13 @@
+         event_time_us >
+             warp_emulator->release_warp_time_us + RELEASE_WARP_GRACE_US &&
+         (!warp_emulator->release_warp_was_grabbed ||
+-         xwl_seat_has_explicit_pointer_grab(xwl_seat)))
++         xwl_seat_has_explicit_pointer_grab(xwl_seat))) {
++        wcf_log("invalidate gap_us=%lld rw=(%d,%d)\n",
++                (long long)(event_time_us - warp_emulator->release_warp_time_us),
++                warp_emulator->release_warp_x,
++                warp_emulator->release_warp_y);
+         warp_emulator->release_warp_valid = FALSE;
++    }
+ 
+     xwl_seat->pending_pointer_event.has_relative = TRUE;
+     xwl_seat->pending_pointer_event.dx = wl_fixed_to_double(dxf);
+@@ -3452,15 +3518,26 @@
+     if (!xwl_screen->pointer_warp ||
+         !xwl_seat->wl_pointer ||
+         !focus_window ||
+-        !xwl_seat->pointer_enter_serial)
++        !xwl_seat->pointer_enter_serial) {
++        wcf_log("warp_v1 DROP caps pw=%d wlp=%p focus=%p serial=%u target=(%d,%d)\n",
++                xwl_screen->pointer_warp != NULL, (void *) xwl_seat->wl_pointer,
++                (void *) focus_window, xwl_seat->pointer_enter_serial, x, y);
+         return;
++    }
+ 
+     window = focus_window->toplevel;
+     if (x < window->drawable.x ||
+         y < window->drawable.y ||
+         x >= (window->drawable.x + window->drawable.width) ||
+-        y >= (window->drawable.y + window->drawable.height))
++        y >= (window->drawable.y + window->drawable.height)) {
++        wcf_log("warp_v1 DROP bounds target=(%d,%d) win=(%d,%d %dx%d)\n",
++                x, y, window->drawable.x, window->drawable.y,
++                window->drawable.width, window->drawable.height);
+         return;
++    }
++    wcf_log("warp_v1 SEND target=(%d,%d) serial=%u\n",
++            x, y, xwl_seat->pointer_enter_serial);
++    wcf_last_v1_send_us = GetTimeInMicros();
+ 
+     sx = (double) (x - window->drawable.x) /
+                   focus_window->viewport_scale_x;
+@@ -3503,6 +3580,7 @@
+                              focus_window->viewport_scale_x);
+         sy = round((double) (y - window->drawable.y) /
+                              focus_window->viewport_scale_y);
++        wcf_log("hint commit x=%d y=%d sx=%d sy=%d\n", x, y, sx, sy);
+         zwp_locked_pointer_v1_set_cursor_position_hint(locked_pointer,
+                                                        wl_fixed_from_int(sx),
+                                                        wl_fixed_from_int(sy));
+@@ -3529,6 +3607,8 @@
+     (void) locked_pointer;
+     warp_emulator->lock_active = TRUE;
+ 
++    wcf_log("lock ENGAGED destroy_on_lock=%d\n", warp_emulator->destroy_on_lock);
++
+     if (warp_emulator->destroy_on_lock) {
+         xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
+         wl_display_flush(xwl_seat->xwl_screen->display);
+@@ -3545,6 +3625,8 @@
+     (void) locked_pointer;
+     warp_emulator->lock_active = FALSE;
+ 
++    wcf_log("lock UNLOCKED destroy_on_lock=%d\n", warp_emulator->destroy_on_lock);
++
+     if (warp_emulator->destroy_on_lock) {
+         xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
+         wl_display_flush(xwl_seat->xwl_screen->display);
+@@ -3761,6 +3843,8 @@
+          * without pinning ordinary hidden-cursor motion to an old recenter
+          * warp.
+          */
++        wcf_log("candidate set x=%d y=%d grabbed=%d\n",
++                x, y, xwl_seat_has_explicit_pointer_grab(xwl_seat));
+         xwl_seat->pointer_warp_emulator->release_warp_valid = TRUE;
+         xwl_seat->pointer_warp_emulator->release_warp_was_grabbed =
+             xwl_seat_has_explicit_pointer_grab(xwl_seat);
+@@ -3797,6 +3881,11 @@
+     struct xwl_window *grab_window = NULL;
+     Bool explicit_pointer_grab = FALSE;
+ 
++    wcf_log("maybe_lock: cursor=%d focus=%p confine=%p grabbed=%d\n",
++            xwl_seat->x_cursor != NULL, (void *) xwl_seat->focus_window,
++            (void *) xwl_seat->cursor_confinement_window,
++            xwl_seat_has_explicit_pointer_grab(xwl_seat));
++
+     if (!xwl_seat_can_emulate_pointer_warp(xwl_seat))
+         return FALSE;
+ 
+@@ -3814,8 +3903,10 @@
+     if (xwl_seat->x_cursor)
+         return FALSE;
+ 
+-    if (!xwl_seat->focus_window)
++    if (!xwl_seat->focus_window) {
++        wcf_log("maybe_lock: NO focus window, skipped\n");
+         return FALSE;
++    }
+ 
+     if (!xwl_screen->rootless)
+         return FALSE;
+@@ -3827,12 +3918,18 @@
+     }
+ 
+     if (xwl_seat->cursor_confinement_window != xwl_seat->focus_window &&
+-        !explicit_pointer_grab)
++        !explicit_pointer_grab) {
++        wcf_log("maybe_lock: confine/focus mismatch gw=%p fw=%p cw=%p, skipped\n",
++                (void *) grab_window, (void *) xwl_seat->focus_window,
++                (void *) xwl_seat->cursor_confinement_window);
+         return FALSE;
++    }
+ 
+     if (xwl_seat->confined_pointer)
+         xwl_seat_destroy_confined_pointer(xwl_seat);
+ 
++    wcf_log("maybe_lock: creating emulator + lock gw=%p fw=%p\n",
++            (void *) grab_window, (void *) xwl_seat->focus_window);
+     xwl_seat_create_pointer_warp_emulator(xwl_seat);
+     xwl_pointer_warp_emulator_lock(xwl_seat->pointer_warp_emulator);
+     return TRUE;
+@@ -3841,6 +3938,11 @@
+ void
+ xwl_seat_cursor_visibility_changed(struct xwl_seat *xwl_seat)
+ {
++    wcf_log("visibility_changed: emulator=%d cursor=%d grabbed=%d\n",
++            xwl_seat->pointer_warp_emulator != NULL,
++            xwl_seat->x_cursor != NULL,
++            xwl_seat_has_explicit_pointer_grab(xwl_seat));
++
+     if (xwl_seat->pointer_warp_emulator && xwl_seat->x_cursor != NULL) {
+         struct xwl_pointer_warp_emulator *warp_emulator =
+             xwl_seat->pointer_warp_emulator;
+@@ -3853,8 +3955,10 @@
+          * lock and teleport the pointer to the stale release target.
+          * Nothing is released in that state; keep the emulator alive.
+          */
+-        if (xwl_seat_has_explicit_pointer_grab(xwl_seat))
++        if (xwl_seat_has_explicit_pointer_grab(xwl_seat)) {
++            wcf_log("release: skip (explicit grab active)\n");
+             return;
++        }
+ 
+         /*
+          * A direct warp after unlocking reliably restores the most recent
+@@ -3869,8 +3973,10 @@
+             if (warp_emulator->release_warp_valid) {
+                 x = warp_emulator->release_warp_x;
+                 y = warp_emulator->release_warp_y;
++                wcf_log("release: CANDIDATE (%d,%d)\n", x, y);
+             } else {
+                 miPointerGetPosition(xwl_seat->pointer, &x, &y);
++                wcf_log("release: FALLBACK sprite (%d,%d)\n", x, y);
+             }
+ 
+             /*
+@@ -3892,6 +3998,8 @@
+          * the object cannot discard the position hint.
+          */
+         warp_emulator->destroy_on_lock = TRUE;
++        wcf_log("release: no-warp path destroy_on_lock=1 locked_ptr=%d active=%d\n",
++                warp_emulator->locked_pointer != NULL, warp_emulator->lock_active);
+         if (!warp_emulator->locked_pointer || warp_emulator->lock_active) {
+             xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
+             wl_display_flush(xwl_seat->xwl_screen->display);
+-- 
+2.53.0

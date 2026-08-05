@@ -1,0 +1,111 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Wed, 05 Aug 2026 08:20:00 +0300
+Subject: [PATCH] xwayland: hold lock destroy one frame after final hint
+
+KWin applies cursor-position hints double-buffered: the pending hint
+latches only once the surface transaction carrying it passes its
+graphics fences, at least one frame after the commit. Destroying the
+locked pointer immediately after the final commit therefore applies the
+PREVIOUS frame's hint: the unlock visibly lands the cursor tens to a
+few hundred pixels off when motion is continuous, and self-corrects
+tens to ~200 ms later once the transaction catches up.
+
+Hold the destroy (and the ack-driven direct-warp sequence) for one
+frame's time after committing the final hint. The cursor stays hidden
+for this entire window (the release branch already runs inside the
+delayed cursor-show period), so the menu cursor appears at the target
+directly, without a settlement blink. Skipped entirely if capture
+resumed meanwhile.
+--- a/hw/xwayland/xwayland-input.c
+b/hw/xwayland/xwayland-input.c
+@@ -2234,6 +2234,10 @@
+         wl_callback_destroy(xwl_seat->pointer_warp_sync);
+         xwl_seat->pointer_warp_sync = NULL;
+     }
++    if (xwl_seat->release_destroy_timer) {
++        TimerFree(xwl_seat->release_destroy_timer);
++        xwl_seat->release_destroy_timer = NULL;
++    }
+ 
+     release_grab(xwl_seat);
+     wl_seat_destroy(xwl_seat->seat);
+@@ -4034,6 +4038,32 @@
+     return TRUE;
+ }
+ 
++static CARD32
++xwl_seat_release_destroy_timer_callback(OsTimerPtr timer, CARD32 time,
++                                        void *arg)
++{
++    struct xwl_seat *xwl_seat = arg;
++    int x = xwl_seat->pointer_warp_target_x;
++    int y = xwl_seat->pointer_warp_target_y;
++
++    (void) time;
++    xwl_seat->release_destroy_timer = NULL;
++
++    if (!xwl_seat->x_cursor || xwl_seat_has_explicit_pointer_grab(xwl_seat)) {
++        wcf_log("release destroy timer: skip (cursor hidden=%d grabbed=%d)\n",
++                xwl_seat->x_cursor == NULL,
++                xwl_seat_has_explicit_pointer_grab(xwl_seat));
++        return 0;
++    }
++
++    wcf_log("release destroy timer: destroy+arm (%d,%d)\n", x, y);
++    xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
++    xwl_seat_arm_pointer_warp_barrier(xwl_seat, x, y);
++    xwl_seat->pointer_warp_sync_release_send = TRUE;
++    wl_display_flush(xwl_seat->xwl_screen->display);
++    return 0;
++}
++
+ void
+ xwl_seat_cursor_visibility_changed(struct xwl_seat *xwl_seat)
+ {
+@@ -4079,20 +4109,22 @@
+             }
+ 
+             /*
+-             * KWin ignores direct warp requests while the pointer constraint
+-             * is still active. Commit the final hint before destroying the
+-             * lock, then issue the direct warp behind a wl_display.sync so it
+-             * is sent strictly after the compositor processed the lock's
+-             * destruction. The warp can no longer be dropped for a still-
+-             * active lock, and the barrier drops any stale absolute position
+-             * the unlock emits before the target. Lock destruction may apply
+-             * an older hint for a subframe window; the sync-ordered warp
+-             * corrects it before it is visible.
++             * KWin applies cursor-position hints double-buffered: a hint
++             * only latches when the surface transaction carrying it passes
++             * its graphics fences, roughly one frame after commit. Destroying
++             * the lock immediately races the transaction queue and the unlock
++             * applies the previous frame's (stale) hint, visibly landing the
++             * cursor tens to hundreds of milliseconds off. Commit the hint,
++             * then hold the destroy for a frame's worth of time so the
++             * transaction latches; the cursor stays hidden this whole window.
+              */
+             xwl_pointer_warp_emulator_set_fake_pos(warp_emulator, x, y);
+-            xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
+-            xwl_seat_arm_pointer_warp_barrier(xwl_seat, x, y);
+-            xwl_seat->pointer_warp_sync_release_send = TRUE;
++            xwl_seat->pointer_warp_target_x = x;
++            xwl_seat->pointer_warp_target_y = y;
++            xwl_seat->release_destroy_timer =
++                TimerSet(xwl_seat->release_destroy_timer, 0, 25,
++                         xwl_seat_release_destroy_timer_callback, xwl_seat);
++            wcf_log("release: hint committed, destroy in 25ms\n");
+             wl_display_flush(xwl_seat->xwl_screen->display);
+             return;
+         }
+--- a/hw/xwayland/xwayland-input.h
+b/hw/xwayland/xwayland-input.h
+@@ -106,6 +106,7 @@
+     Bool pointer_warp_sync_release_send;
+     Bool release_warp_await_ack;
+     int release_warp_retry;
++    OsTimerPtr release_destroy_timer;
+ 
+     struct xwl_pointer_warp_emulator *pointer_warp_emulator;
+     struct wl_callback *pointer_warp_sync;
+-- 
+2.53.0

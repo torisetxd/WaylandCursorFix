@@ -1,4 +1,43 @@
-# WaylandCursorFix — continuity log (as of 2026-08-03, evening update)
+# WaylandCursorFix — continuity log (as of 2026-08-05, v16 release)
+
+**STATE OF PLAY: RESOLVED.** v16 installed on the user's machine; the
+residual "inventory opens at last position" symptom is no longer
+reproducible. Full forensic record + evidence logs:
+`investigation/README.md` (document), `investigation/*.log` (decisive
+sessions). Below is the older working log, kept for history.
+
+## Final fix chain (beyond v10)
+
+- v11–13: WCF_DEBUG in-package diagnostics (0006, 0007) — enabled six
+  instrumented live sessions proving the composite cause:
+  (a) KWin latches cursor-position hints via fence-gated surface
+      Transactions, ≥1 frame late; destroying the lock in the same batch
+      reads the previous frame's hint (stale restore),
+  (b) libwayland destructor deferral lets `wp_pointer_warp_v1` land
+      while `m_locked` is still set → dropped.
+- v14: 0008 destroy→sync→warp ordering (3/4 cases fixed; 4th proved the
+  destructor-deferral remains).
+- v15: 0009 ack-driven idempotent re-send of the release warp (wrong
+  absolute or barrier boundary, ≤3, skip when capture resumed). No wrong
+  settles, but settle arrived via the hint at +32–190 ms → visible blink.
+- v16: 0010 hold lock destroy ~25 ms (≥1 frame) after final hint commit
+  → hint latched before teardown → restore lands on target immediately.
+  User-verified.
+
+## Open items after release
+
+- Out-of-surface release (cursor outside game surface at capture):
+  structurally impossible restore; needs a KWin-side change (constraint
+  re-eval on enter, or warp acceptance for constraint-holding surfaces).
+- Scaled displays (xwaylandScale != 1) untested; hint division vs warp
+  coords disagree there.
+- 0006/0007 are the debug layer (inert unless WCF_DEBUG set); strip from
+  a "stable" build if desired.
+- Cosmetic: prior position can be visible for ~1 frame pre-warp-ack.
+
+---
+
+# Historical continuity log (as of 2026-08-03)
 
 Goal: make XWarpPointer honor real pointer movement in Xwayland under KWin Wayland,
 and make grab→ungrab transitions (Minecraft/Badlion LWJGL2 style) restore the

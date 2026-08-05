@@ -1,0 +1,49 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Wed, 05 Aug 2026 07:30:00 +0300
+Subject: [PATCH] xwayland: extend post-warp absolute logging
+
+Log up to 8 absolute pointer motions within 3 ms of each accepted
+pointer-warp-v1, not just the first: distinguishes a stale unlock-hint
+absolute being corrected by the direct warp from the warp being dropped
+entirely.
+---
+ hw/xwayland/xwayland-input.c | 8 insertions(+), 4 deletions(-)
+ 1 file changed, 
+
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -896,6 +896,7 @@
+ }
+ 
+ static CARD64 wcf_last_v1_send_us;
++static int wcf_post_warp_count;
+ 
+ static void
+ pointer_handle_motion(void *data, struct wl_pointer *pointer,
+@@ -908,11 +909,13 @@
+ 
+     if (wcf_last_v1_send_us) {
+         CARD64 now_us = GetTimeInMicros();
+-        if ((int64_t)(now_us - wcf_last_v1_send_us) < 120000) {
+-            wcf_log("post-warp absolute sx=%.0f sy=%.0f since_warp_us=%lld\n",
++        if ((int64_t)(now_us - wcf_last_v1_send_us) < 3000000 && wcf_post_warp_count < 8) {
++            wcf_log("post-warp absolute n=%d sx=%.0f sy=%.0f since_warp_us=%lld\n",
++                    wcf_post_warp_count,
+                     wl_fixed_to_double(sx_w), wl_fixed_to_double(sy_w),
+                     (long long)(now_us - wcf_last_v1_send_us));
+-            wcf_last_v1_send_us = 0;
++            wcf_last_v1_send_us = now_us;
++            wcf_post_warp_count++;
+         } else {
+             wcf_last_v1_send_us = 0;
+         }
+@@ -3538,6 +3541,7 @@
+     wcf_log("warp_v1 SEND target=(%d,%d) serial=%u\n",
+             x, y, xwl_seat->pointer_enter_serial);
+     wcf_last_v1_send_us = GetTimeInMicros();
++    wcf_post_warp_count = 0;
+ 
+     sx = (double) (x - window->drawable.x) /
+                   focus_window->viewport_scale_x;
+-- 
+2.53.0

@@ -1,0 +1,348 @@
+WCF t_us=57555960 enter serial=571 grabbed=0
+WCF t_us=57556157 maybe_lock: cursor=0 focus=0x5592bf0efc50 confine=(nil) grabbed=0
+WCF t_us=57556160 maybe_lock: confine/focus mismatch gw=(nil) fw=0x5592bf0efc50 cw=(nil), skipped
+WCF t_us=57561080 visibility_changed: emulator=0 cursor=1 grabbed=0
+WCF t_us=58484106 leave serial=592 grabbed=0 emulator=0
+WCF t_us=60340961 enter serial=624 grabbed=0
+WCF t_us=60340973 maybe_lock: cursor=1 focus=0x5592bf0efc50 confine=(nil) grabbed=0
+WCF t_us=62442003 leave serial=665 grabbed=0 emulator=0
+WCF t_us=69040400 enter serial=756 grabbed=0
+WCF t_us=69040429 maybe_lock: cursor=1 focus=0x5592bf0efc50 confine=(nil) grabbed=0
+WCF t_us=81738644 leave serial=767 grabbed=0 emulator=0
+WCF t_us=81818659 enter serial=770 grabbed=0
+WCF t_us=81818683 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=(nil) grabbed=0
+WCF t_us=81818686 leave serial=771 grabbed=0 emulator=0
+WCF t_us=82332681 enter serial=775 grabbed=0
+WCF t_us=82332712 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=(nil) grabbed=0
+WCF t_us=82413691 leave serial=776 grabbed=0 emulator=0
+WCF t_us=83116669 enter serial=777 grabbed=0
+WCF t_us=83116679 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=(nil) grabbed=0
+WCF t_us=89288817 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=0x5592befe38d0 grabbed=0
+WCF t_us=89288859 visibility_changed: emulator=0 cursor=0 grabbed=0
+WCF t_us=89288861 maybe_lock: cursor=0 focus=0x5592befe38d0 confine=0x5592befe38d0 grabbed=0
+WCF t_us=89288863 maybe_lock: creating emulator + lock gw=(nil) fw=0x5592befe38d0
+WCF t_us=89289167 lock ENGAGED destroy_on_lock=0
+WCF t_us=91702588 hint commit x=3048 y=506 sx=1128 sy=478
+WCF t_us=91708555 hint commit x=3048 y=505 sx=1128 sy=477
+WCF t_us=91713549 hint commit x=3048 y=505 sx=1128 sy=477
+WCF t_us=91718562 hint commit x=3047 y=505 sx=1127 sy=477
+WCF t_us=91720545 hint commit x=3047 y=504 sx=1127 sy=476
+WCF t_us=91727549 hint commit x=3047 y=503 sx=1127 sy=475
+WCF t_us=91741551 hint commit x=3047 y=503 sx=1127 sy=475
+WCF t_us=91750554 hint commit x=3046 y=503 sx=1126 sy=475
+WCF t_us=91751548 hint commit x=3046 y=502 sx=1126 sy=474
+WCF t_us=91769588 hint commit x=3046 y=502 sx=1126 sy=474
+WCF t_us=91776556 hint commit x=3046 y=502 sx=1126 sy=474
+WCF t_us=91800553 hint commit x=3046 y=501 sx=1126 sy=473
+WCF t_us=91848564 hint commit x=3046 y=500 sx=1126 sy=472
+WCF t_us=91879733 hint commit x=3045 y=500 sx=1125 sy=472
+WCF t_us=91974570 hint commit x=3045 y=500 sx=1125 sy=472
+WCF t_us=94463918 hint commit x=3200 y=718 sx=1280 sy=690
+WCF t_us=94463924 candidate set x=3200 y=718 grabbed=0
+WCF t_us=94468234 visibility_changed: emulator=1 cursor=1 grabbed=0
+WCF t_us=94468238 release: CANDIDATE (3200,718)
+WCF t_us=94468240 hint commit x=3200 y=718 sx=1280 sy=690
+WCF t_us=94468317 release sync done: sending warp (3200,718)
+WCF t_us=94468319 warp_v1 SEND target=(3200,718) serial=777
+WCF t_us=94470546 release sync done: no ack, re-sending warp (3200,718) retry=0
+WCF t_us=94470548 warp_v1 SEND target=(3200,718) serial=777
+WCF t_us=94470588 release sync done: no ack, re-sending warp (3200,718) retry=1
+WCF t_us=94470590 warp_v1 SEND target=(3200,718) serial=777
+WCF t_us=94470606 release sync done: no ack, re-sending warp (3200,718) retry=2
+WCF t_us=94470608 warp_v1 SEND target=(3200,718) serial=777
+WCF t_us=94657708 post-warp absolute n=0 sx=1280 sy=689 since_warp_us=187092
+WCF t_us=94661611 post-warp absolute n=1 sx=1280 sy=689 since_warp_us=3907
+WCF t_us=94663620 post-warp absolute n=2 sx=1281 sy=688 since_warp_us=2008
+WCF t_us=94665621 post-warp absolute n=3 sx=1281 sy=688 since_warp_us=2003
+WCF t_us=94667586 post-warp absolute n=4 sx=1281 sy=687 since_warp_us=1965
+WCF t_us=94670621 post-warp absolute n=5 sx=1281 sy=686 since_warp_us=3035
+WCF t_us=94673598 post-warp absolute n=6 sx=1281 sy=686 since_warp_us=2977
+WCF t_us=94674627 post-warp absolute n=7 sx=1281 sy=685 since_warp_us=1028
+WCF t_us=96073766 leave serial=796 grabbed=0 emulator=0
+WCF t_us=99402597 enter serial=847 grabbed=0
+WCF t_us=99402608 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=(nil) grabbed=0
+WCF t_us=99739520 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=0x5592befe38d0 grabbed=0
+WCF t_us=99739554 visibility_changed: emulator=0 cursor=0 grabbed=0
+WCF t_us=99739556 maybe_lock: cursor=0 focus=0x5592befe38d0 confine=0x5592befe38d0 grabbed=0
+WCF t_us=99739559 maybe_lock: creating emulator + lock gw=(nil) fw=0x5592befe38d0
+WCF t_us=99739613 lock ENGAGED destroy_on_lock=0
+WCF t_us=99878601 hint commit x=3385 y=721 sx=1465 sy=693
+WCF t_us=99890598 hint commit x=3385 y=721 sx=1465 sy=693
+WCF t_us=99910582 hint commit x=3386 y=721 sx=1466 sy=693
+WCF t_us=101442709 hint commit x=3200 y=718 sx=1280 sy=690
+WCF t_us=101442715 candidate set x=3200 y=718 grabbed=0
+WCF t_us=101447023 visibility_changed: emulator=1 cursor=1 grabbed=0
+WCF t_us=101447027 release: CANDIDATE (3200,718)
+WCF t_us=101447029 hint commit x=3200 y=718 sx=1280 sy=690
+WCF t_us=101447081 release sync done: sending warp (3200,718)
+WCF t_us=101447083 warp_v1 SEND target=(3200,718) serial=847
+WCF t_us=101447131 release sync done: no ack, re-sending warp (3200,718) retry=0
+WCF t_us=101447133 warp_v1 SEND target=(3200,718) serial=847
+WCF t_us=101447159 release sync done: no ack, re-sending warp (3200,718) retry=1
+WCF t_us=101447161 warp_v1 SEND target=(3200,718) serial=847
+WCF t_us=101447175 release sync done: no ack, re-sending warp (3200,718) retry=2
+WCF t_us=101447177 warp_v1 SEND target=(3200,718) serial=847
+WCF t_us=101624687 post-warp absolute n=0 sx=1281 sy=690 since_warp_us=177501
+WCF t_us=101625659 post-warp absolute n=1 sx=1281 sy=690 since_warp_us=978
+WCF t_us=101626663 post-warp absolute n=2 sx=1281 sy=689 since_warp_us=1003
+WCF t_us=101628627 post-warp absolute n=3 sx=1282 sy=689 since_warp_us=1965
+WCF t_us=101629610 post-warp absolute n=4 sx=1282 sy=689 since_warp_us=983
+WCF t_us=101630648 post-warp absolute n=5 sx=1283 sy=689 since_warp_us=1037
+WCF t_us=101631642 post-warp absolute n=6 sx=1284 sy=689 since_warp_us=994
+WCF t_us=101632624 post-warp absolute n=7 sx=1284 sy=688 since_warp_us=983
+WCF t_us=101791124 leave serial=883 grabbed=0 emulator=0
+WCF t_us=110095750 enter serial=956 grabbed=0
+WCF t_us=110095760 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=(nil) grabbed=0
+WCF t_us=110850492 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=0x5592befe38d0 grabbed=0
+WCF t_us=110850517 visibility_changed: emulator=0 cursor=0 grabbed=0
+WCF t_us=110850520 maybe_lock: cursor=0 focus=0x5592befe38d0 confine=0x5592befe38d0 grabbed=0
+WCF t_us=110850522 maybe_lock: creating emulator + lock gw=(nil) fw=0x5592befe38d0
+WCF t_us=110850568 lock ENGAGED destroy_on_lock=0
+WCF t_us=115251055 hint commit x=3200 y=718 sx=1280 sy=690
+WCF t_us=115251061 candidate set x=3200 y=718 grabbed=0
+WCF t_us=115256062 visibility_changed: emulator=1 cursor=1 grabbed=0
+WCF t_us=115256066 release: CANDIDATE (3200,718)
+WCF t_us=115256069 hint commit x=3200 y=718 sx=1280 sy=690
+WCF t_us=115256168 release sync done: sending warp (3200,718)
+WCF t_us=115256171 warp_v1 SEND target=(3200,718) serial=956
+WCF t_us=115256236 release sync done: no ack, re-sending warp (3200,718) retry=0
+WCF t_us=115256239 warp_v1 SEND target=(3200,718) serial=956
+WCF t_us=115256265 release sync done: no ack, re-sending warp (3200,718) retry=1
+WCF t_us=115256267 warp_v1 SEND target=(3200,718) serial=956
+WCF t_us=115256282 release sync done: no ack, re-sending warp (3200,718) retry=2
+WCF t_us=115256285 warp_v1 SEND target=(3200,718) serial=956
+WCF t_us=115288830 post-warp absolute n=0 sx=1280 sy=689 since_warp_us=32540
+WCF t_us=115295456 post-warp absolute n=1 sx=1280 sy=689 since_warp_us=6627
+WCF t_us=115296797 post-warp absolute n=2 sx=1280 sy=688 since_warp_us=1341
+WCF t_us=115299869 post-warp absolute n=3 sx=1279 sy=688 since_warp_us=3072
+WCF t_us=115301822 post-warp absolute n=4 sx=1279 sy=688 since_warp_us=1953
+WCF t_us=115303820 post-warp absolute n=5 sx=1280 sy=688 since_warp_us=1997
+WCF t_us=115304820 post-warp absolute n=6 sx=1281 sy=688 since_warp_us=999
+WCF t_us=115305830 post-warp absolute n=7 sx=1281 sy=688 since_warp_us=1011
+WCF t_us=115751154 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=0x5592befe38d0 grabbed=0
+WCF t_us=115751184 visibility_changed: emulator=0 cursor=0 grabbed=0
+WCF t_us=115751186 maybe_lock: cursor=0 focus=0x5592befe38d0 confine=0x5592befe38d0 grabbed=0
+WCF t_us=115751188 maybe_lock: creating emulator + lock gw=(nil) fw=0x5592befe38d0
+WCF t_us=115751238 lock ENGAGED destroy_on_lock=0
+WCF t_us=115751745 hint commit x=3741 y=739 sx=1821 sy=711
+WCF t_us=115752744 hint commit x=3743 y=739 sx=1823 sy=711
+WCF t_us=115753765 hint commit x=3744 y=739 sx=1824 sy=711
+WCF t_us=115754749 hint commit x=3745 y=739 sx=1825 sy=711
+WCF t_us=115755752 hint commit x=3746 y=739 sx=1826 sy=711
+WCF t_us=115756741 hint commit x=3747 y=739 sx=1827 sy=711
+WCF t_us=115758781 hint commit x=3749 y=739 sx=1829 sy=711
+WCF t_us=115759743 hint commit x=3750 y=739 sx=1830 sy=711
+WCF t_us=115760748 hint commit x=3753 y=739 sx=1833 sy=711
+WCF t_us=115761741 hint commit x=3754 y=739 sx=1834 sy=711
+WCF t_us=115762761 hint commit x=3755 y=739 sx=1835 sy=711
+WCF t_us=115763738 hint commit x=3756 y=739 sx=1836 sy=711
+WCF t_us=115764778 hint commit x=3757 y=739 sx=1837 sy=711
+WCF t_us=115765758 hint commit x=3758 y=739 sx=1838 sy=711
+WCF t_us=115766758 hint commit x=3759 y=739 sx=1839 sy=711
+WCF t_us=115767750 hint commit x=3761 y=739 sx=1841 sy=711
+WCF t_us=115768750 hint commit x=3762 y=739 sx=1842 sy=711
+WCF t_us=115769778 hint commit x=3764 y=739 sx=1844 sy=711
+WCF t_us=115770758 hint commit x=3765 y=739 sx=1845 sy=711
+WCF t_us=115771755 hint commit x=3766 y=739 sx=1846 sy=711
+WCF t_us=115772750 hint commit x=3767 y=739 sx=1847 sy=711
+WCF t_us=115773773 hint commit x=3768 y=739 sx=1848 sy=711
+WCF t_us=115774817 hint commit x=3769 y=739 sx=1849 sy=711
+WCF t_us=115775749 hint commit x=3771 y=739 sx=1851 sy=711
+WCF t_us=115776742 hint commit x=3772 y=739 sx=1852 sy=711
+WCF t_us=115777924 hint commit x=3774 y=739 sx=1854 sy=711
+WCF t_us=115778748 hint commit x=3775 y=739 sx=1855 sy=711
+WCF t_us=115779749 hint commit x=3777 y=739 sx=1857 sy=711
+WCF t_us=115780769 hint commit x=3778 y=739 sx=1858 sy=711
+WCF t_us=115781747 hint commit x=3780 y=739 sx=1860 sy=711
+WCF t_us=115782737 hint commit x=3783 y=739 sx=1863 sy=711
+WCF t_us=115783735 hint commit x=3784 y=739 sx=1864 sy=711
+WCF t_us=115784744 hint commit x=3785 y=739 sx=1865 sy=711
+WCF t_us=115785771 hint commit x=3787 y=739 sx=1867 sy=711
+WCF t_us=115786743 hint commit x=3788 y=739 sx=1868 sy=711
+WCF t_us=115787753 hint commit x=3789 y=739 sx=1869 sy=711
+WCF t_us=115788740 hint commit x=3790 y=739 sx=1870 sy=711
+WCF t_us=115789746 hint commit x=3792 y=739 sx=1872 sy=711
+WCF t_us=115790772 hint commit x=3793 y=739 sx=1873 sy=711
+WCF t_us=115791739 hint commit x=3794 y=739 sx=1874 sy=711
+WCF t_us=115792739 hint commit x=3796 y=739 sx=1876 sy=711
+WCF t_us=115793757 hint commit x=3797 y=739 sx=1877 sy=711
+WCF t_us=115794754 hint commit x=3798 y=739 sx=1878 sy=711
+WCF t_us=115795746 hint commit x=3800 y=739 sx=1880 sy=711
+WCF t_us=115796772 hint commit x=3801 y=739 sx=1881 sy=711
+WCF t_us=115797744 hint commit x=3803 y=739 sx=1883 sy=711
+WCF t_us=115798735 hint commit x=3805 y=739 sx=1885 sy=711
+WCF t_us=115799762 hint commit x=3807 y=739 sx=1887 sy=711
+WCF t_us=115800755 hint commit x=3807 y=739 sx=1887 sy=711
+WCF t_us=115801766 hint commit x=3809 y=739 sx=1889 sy=711
+WCF t_us=115802852 hint commit x=3810 y=739 sx=1890 sy=711
+WCF t_us=115803750 hint commit x=3813 y=739 sx=1893 sy=711
+WCF t_us=115804749 hint commit x=3814 y=739 sx=1894 sy=711
+WCF t_us=115805746 hint commit x=3816 y=739 sx=1896 sy=711
+WCF t_us=115806786 hint commit x=3818 y=739 sx=1898 sy=711
+WCF t_us=115807744 hint commit x=3819 y=739 sx=1899 sy=711
+WCF t_us=115808744 hint commit x=3820 y=739 sx=1900 sy=711
+WCF t_us=115809749 hint commit x=3822 y=739 sx=1902 sy=711
+WCF t_us=115810743 hint commit x=3823 y=739 sx=1903 sy=711
+WCF t_us=115811738 hint commit x=3825 y=739 sx=1905 sy=711
+WCF t_us=115812770 hint commit x=3826 y=739 sx=1906 sy=711
+WCF t_us=115813736 hint commit x=3828 y=739 sx=1908 sy=711
+WCF t_us=115814735 hint commit x=3829 y=739 sx=1909 sy=711
+WCF t_us=115815747 hint commit x=3831 y=739 sx=1911 sy=711
+WCF t_us=115816735 hint commit x=3834 y=739 sx=1914 sy=711
+WCF t_us=115818754 hint commit x=3834 y=739 sx=1914 sy=711
+WCF t_us=115819739 hint commit x=3836 y=739 sx=1916 sy=711
+WCF t_us=115820744 hint commit x=3838 y=739 sx=1918 sy=711
+WCF t_us=115821746 hint commit x=3840 y=739 sx=1920 sy=711
+WCF t_us=115822763 hint commit x=3841 y=739 sx=1921 sy=711
+WCF t_us=115823739 hint commit x=3844 y=739 sx=1924 sy=711
+WCF t_us=115824748 hint commit x=3847 y=739 sx=1927 sy=711
+WCF t_us=115825743 hint commit x=3849 y=739 sx=1929 sy=711
+WCF t_us=115826743 hint commit x=3850 y=739 sx=1930 sy=711
+WCF t_us=115827837 hint commit x=3852 y=739 sx=1932 sy=711
+WCF t_us=115828803 hint commit x=3854 y=739 sx=1934 sy=711
+WCF t_us=115829747 hint commit x=3856 y=739 sx=1936 sy=711
+WCF t_us=115830746 hint commit x=3858 y=739 sx=1938 sy=711
+WCF t_us=115831762 hint commit x=3858 y=739 sx=1938 sy=711
+WCF t_us=115832756 hint commit x=3860 y=739 sx=1940 sy=711
+WCF t_us=115833762 hint commit x=3861 y=739 sx=1941 sy=711
+WCF t_us=115834750 hint commit x=3863 y=739 sx=1943 sy=711
+WCF t_us=115835742 hint commit x=3865 y=739 sx=1945 sy=711
+WCF t_us=115836734 hint commit x=3867 y=739 sx=1947 sy=711
+WCF t_us=115837752 hint commit x=3869 y=739 sx=1949 sy=711
+WCF t_us=115838762 hint commit x=3870 y=739 sx=1950 sy=711
+WCF t_us=115839736 hint commit x=3872 y=739 sx=1952 sy=711
+WCF t_us=115840745 hint commit x=3874 y=739 sx=1954 sy=711
+WCF t_us=115841736 hint commit x=3876 y=739 sx=1956 sy=711
+WCF t_us=115842738 hint commit x=3877 y=739 sx=1957 sy=711
+WCF t_us=115843752 hint commit x=3878 y=739 sx=1958 sy=711
+WCF t_us=115844763 hint commit x=3880 y=739 sx=1960 sy=711
+WCF t_us=115845740 hint commit x=3881 y=739 sx=1961 sy=711
+WCF t_us=115846748 hint commit x=3883 y=739 sx=1963 sy=711
+WCF t_us=115847740 hint commit x=3886 y=739 sx=1966 sy=711
+WCF t_us=115848744 hint commit x=3887 y=739 sx=1967 sy=711
+WCF t_us=115849766 hint commit x=3889 y=739 sx=1969 sy=711
+WCF t_us=115850750 hint commit x=3890 y=739 sx=1970 sy=711
+WCF t_us=115851748 hint commit x=3892 y=739 sx=1972 sy=711
+WCF t_us=115852838 hint commit x=3894 y=739 sx=1974 sy=711
+WCF t_us=115853740 hint commit x=3895 y=739 sx=1975 sy=711
+WCF t_us=115854769 hint commit x=3897 y=739 sx=1977 sy=711
+WCF t_us=115855743 hint commit x=3898 y=739 sx=1978 sy=711
+WCF t_us=115856760 hint commit x=3900 y=740 sx=1980 sy=712
+WCF t_us=115858749 hint commit x=3901 y=740 sx=1981 sy=712
+WCF t_us=115859751 hint commit x=3904 y=740 sx=1984 sy=712
+WCF t_us=115860769 hint commit x=3906 y=740 sx=1986 sy=712
+WCF t_us=115861741 hint commit x=3908 y=740 sx=1988 sy=712
+WCF t_us=115862749 hint commit x=3909 y=740 sx=1989 sy=712
+WCF t_us=115863747 hint commit x=3911 y=740 sx=1991 sy=712
+WCF t_us=115864740 hint commit x=3912 y=740 sx=1992 sy=712
+WCF t_us=115865776 hint commit x=3913 y=740 sx=1993 sy=712
+WCF t_us=115866744 hint commit x=3915 y=740 sx=1995 sy=712
+WCF t_us=115867741 hint commit x=3917 y=740 sx=1997 sy=712
+WCF t_us=115868758 hint commit x=3918 y=740 sx=1998 sy=712
+WCF t_us=115869745 hint commit x=3920 y=740 sx=2000 sy=712
+WCF t_us=115870773 hint commit x=3921 y=740 sx=2001 sy=712
+WCF t_us=115871754 hint commit x=3923 y=740 sx=2003 sy=712
+WCF t_us=115872754 hint commit x=3924 y=740 sx=2004 sy=712
+WCF t_us=115873747 hint commit x=3927 y=740 sx=2007 sy=712
+WCF t_us=115874754 hint commit x=3929 y=740 sx=2009 sy=712
+WCF t_us=115875748 hint commit x=3930 y=740 sx=2010 sy=712
+WCF t_us=115876778 hint commit x=3932 y=740 sx=2012 sy=712
+WCF t_us=115877962 hint commit x=3933 y=740 sx=2013 sy=712
+WCF t_us=115878756 hint commit x=3935 y=740 sx=2015 sy=712
+WCF t_us=115879750 hint commit x=3936 y=740 sx=2016 sy=712
+WCF t_us=115880758 hint commit x=3938 y=740 sx=2018 sy=712
+WCF t_us=115881780 hint commit x=3939 y=740 sx=2019 sy=712
+WCF t_us=115882758 hint commit x=3941 y=740 sx=2021 sy=712
+WCF t_us=115883746 hint commit x=3942 y=740 sx=2022 sy=712
+WCF t_us=115884755 hint commit x=3944 y=740 sx=2024 sy=712
+WCF t_us=115885746 hint commit x=3945 y=740 sx=2025 sy=712
+WCF t_us=115886764 hint commit x=3947 y=740 sx=2027 sy=712
+WCF t_us=115887751 hint commit x=3950 y=740 sx=2030 sy=712
+WCF t_us=115888737 hint commit x=3951 y=740 sx=2031 sy=712
+WCF t_us=115889735 hint commit x=3953 y=740 sx=2033 sy=712
+WCF t_us=115890753 hint commit x=3954 y=740 sx=2034 sy=712
+WCF t_us=115891760 hint commit x=3956 y=740 sx=2036 sy=712
+WCF t_us=115892768 hint commit x=3959 y=740 sx=2039 sy=712
+WCF t_us=115893755 hint commit x=3960 y=740 sx=2040 sy=712
+WCF t_us=115894754 hint commit x=3962 y=740 sx=2042 sy=712
+WCF t_us=115895745 hint commit x=3964 y=740 sx=2044 sy=712
+WCF t_us=115896744 hint commit x=3965 y=740 sx=2045 sy=712
+WCF t_us=115897769 hint commit x=3967 y=740 sx=2047 sy=712
+WCF t_us=115898741 hint commit x=3968 y=740 sx=2048 sy=712
+WCF t_us=115899745 hint commit x=3969 y=740 sx=2049 sy=712
+WCF t_us=115900755 hint commit x=3971 y=740 sx=2051 sy=712
+WCF t_us=115901741 hint commit x=3972 y=740 sx=2052 sy=712
+WCF t_us=115902853 hint commit x=3974 y=740 sx=2054 sy=712
+WCF t_us=115903752 hint commit x=3976 y=740 sx=2056 sy=712
+WCF t_us=115904742 hint commit x=3977 y=740 sx=2057 sy=712
+WCF t_us=115905755 hint commit x=3980 y=740 sx=2060 sy=712
+WCF t_us=115906754 hint commit x=3981 y=740 sx=2061 sy=712
+WCF t_us=115908771 hint commit x=3983 y=740 sx=2063 sy=712
+WCF t_us=115909747 hint commit x=3983 y=740 sx=2063 sy=712
+WCF t_us=115910754 hint commit x=3985 y=740 sx=2065 sy=712
+WCF t_us=115911740 hint commit x=3986 y=740 sx=2066 sy=712
+WCF t_us=115912749 hint commit x=3989 y=740 sx=2069 sy=712
+WCF t_us=115913763 hint commit x=3990 y=740 sx=2070 sy=712
+WCF t_us=115914742 hint commit x=3992 y=740 sx=2072 sy=712
+WCF t_us=115915745 hint commit x=3994 y=740 sx=2074 sy=712
+WCF t_us=115916741 hint commit x=3995 y=740 sx=2075 sy=712
+WCF t_us=115917736 hint commit x=3997 y=740 sx=2077 sy=712
+WCF t_us=115918775 hint commit x=3999 y=740 sx=2079 sy=712
+WCF t_us=115919738 hint commit x=4001 y=740 sx=2081 sy=712
+WCF t_us=115920741 hint commit x=4003 y=740 sx=2083 sy=712
+WCF t_us=115921748 hint commit x=4004 y=740 sx=2084 sy=712
+WCF t_us=115922749 hint commit x=4006 y=740 sx=2086 sy=712
+WCF t_us=115923736 hint commit x=4008 y=740 sx=2088 sy=712
+WCF t_us=115924773 hint commit x=4009 y=740 sx=2089 sy=712
+WCF t_us=115925747 hint commit x=4011 y=740 sx=2091 sy=712
+WCF t_us=115926742 hint commit x=4012 y=740 sx=2092 sy=712
+WCF t_us=115927850 hint commit x=4013 y=740 sx=2093 sy=712
+WCF t_us=115928752 hint commit x=4015 y=740 sx=2095 sy=712
+WCF t_us=115929770 hint commit x=4017 y=740 sx=2097 sy=712
+WCF t_us=115930853 hint commit x=4018 y=740 sx=2098 sy=712
+WCF t_us=115931755 hint commit x=4020 y=740 sx=2100 sy=712
+WCF t_us=115933746 hint commit x=4023 y=740 sx=2103 sy=712
+WCF t_us=115934777 hint commit x=4024 y=740 sx=2104 sy=712
+WCF t_us=115935747 hint commit x=4026 y=740 sx=2106 sy=712
+WCF t_us=115936744 hint commit x=4027 y=740 sx=2107 sy=712
+WCF t_us=115937745 hint commit x=4029 y=740 sx=2109 sy=712
+WCF t_us=115938742 hint commit x=4031 y=740 sx=2111 sy=712
+WCF t_us=115939739 hint commit x=4032 y=740 sx=2112 sy=712
+WCF t_us=115940774 hint commit x=4033 y=740 sx=2113 sy=712
+WCF t_us=115941740 hint commit x=4036 y=740 sx=2116 sy=712
+WCF t_us=115942742 hint commit x=4038 y=740 sx=2118 sy=712
+WCF t_us=115943750 hint commit x=4040 y=740 sx=2120 sy=712
+WCF t_us=115944745 hint commit x=4041 y=740 sx=2121 sy=712
+WCF t_us=115945769 hint commit x=4043 y=740 sx=2123 sy=712
+WCF t_us=115946765 hint commit x=4044 y=740 sx=2124 sy=712
+WCF t_us=115947748 hint commit x=4046 y=740 sx=2126 sy=712
+WCF t_us=115948753 hint commit x=4047 y=740 sx=2127 sy=712
+WCF t_us=115949772 hint commit x=4049 y=740 sx=2129 sy=712
+WCF t_us=115950555 hint commit x=3200 y=718 sx=1280 sy=690
+WCF t_us=115950557 candidate set x=3200 y=718 grabbed=0
+WCF t_us=115950778 hint commit x=3201 y=718 sx=1281 sy=690
+WCF t_us=115950784 visibility_changed: emulator=1 cursor=1 grabbed=0
+WCF t_us=115950786 release: CANDIDATE (3200,718)
+WCF t_us=115950788 hint commit x=3200 y=718 sx=1280 sy=690
+WCF t_us=115950826 release sync done: sending warp (3200,718)
+WCF t_us=115950829 warp_v1 SEND target=(3200,718) serial=956
+WCF t_us=115950873 release sync done: no ack, re-sending warp (3200,718) retry=0
+WCF t_us=115950877 warp_v1 SEND target=(3200,718) serial=956
+WCF t_us=115950903 release sync done: no ack, re-sending warp (3200,718) retry=1
+WCF t_us=115950905 warp_v1 SEND target=(3200,718) serial=956
+WCF t_us=115950921 release sync done: no ack, re-sending warp (3200,718) retry=2
+WCF t_us=115950923 warp_v1 SEND target=(3200,718) serial=956
+WCF t_us=115951758 post-warp absolute n=0 sx=2131 sy=712 since_warp_us=830
+WCF t_us=115954074 post-warp absolute n=1 sx=2136 sy=712 since_warp_us=2316
+WCF t_us=115954790 post-warp absolute n=2 sx=2137 sy=712 since_warp_us=717
+WCF t_us=115955802 post-warp absolute n=3 sx=2138 sy=712 since_warp_us=1011
+WCF t_us=115956832 post-warp absolute n=4 sx=2140 sy=712 since_warp_us=1030
+WCF t_us=115957845 post-warp absolute n=5 sx=2142 sy=712 since_warp_us=1014
+WCF t_us=115958895 post-warp absolute n=6 sx=2143 sy=712 since_warp_us=1048
+WCF t_us=115959791 post-warp absolute n=7 sx=2146 sy=712 since_warp_us=897
+WCF t_us=116196936 leave serial=986 grabbed=0 emulator=0
+WCF t_us=116269904 enter serial=988 grabbed=0
+WCF t_us=116269911 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=(nil) grabbed=0
+WCF t_us=118448782 leave serial=1002 grabbed=0 emulator=0
+WCF t_us=119210917 enter serial=1012 grabbed=0
+WCF t_us=119210927 maybe_lock: cursor=1 focus=0x5592befe38d0 confine=(nil) grabbed=0

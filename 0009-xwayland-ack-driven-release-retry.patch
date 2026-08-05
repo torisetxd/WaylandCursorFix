@@ -1,0 +1,132 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Wed, 05 Aug 2026 08:05:00 +0300
+Subject: [PATCH] xwayland: ack-driven retry for the release warp
+
+Revision 14 moved the release warp behind a wl_display.sync, but
+libwayland destructor deferral can still leave the compositor's lock
+teardown trailing the sync, so the direct warp can still land while the
+compositor considers the lock active and be dropped, after which the
+unlock's (possibly stale) hint absolute settles the physical cursor.
+
+Watch the absolute positions that follow the release warp: if the
+compositor reports the target, done. If it reports anything else (the
+stale unlock hint), re-send the warp immediately, before the next
+compositor frame; if nothing reports back, the barrier's sync boundary
+re-sends once. Both retries are capped at three sends per release and
+skipped entirely when capture resumed. First-shot releases (target on
+the first absolute) issue no extra traffic.
+---
+ hw/xwayland/xwayland-input.c | 72 insertions(+)
+ hw/xwayland/xwayland-input.h | 3 insertions(+)
+ 2 files changed, 72 insertions(+), 2 deletions(-)
+
+--- a/hw/xwayland/xwayland-input.c
+b/hw/xwayland/xwayland-input.c
+@@ -901,6 +901,59 @@
+ static CARD64 wcf_last_v1_send_us;
+ static int wcf_post_warp_count;
+ 
++static Bool
++xwl_seat_absolute_is_warp_target(struct xwl_seat *xwl_seat,
++                                 wl_fixed_t sx_w, wl_fixed_t sy_w)
++{
++    int event_x = wl_fixed_to_int(sx_w) * xwl_seat->xwl_screen->global_surface_scale *
++                  xwl_seat->focus_window->viewport_scale_x;
++    int event_y = wl_fixed_to_int(sy_w) * xwl_seat->xwl_screen->global_surface_scale *
++                  xwl_seat->focus_window->viewport_scale_y;
++    int x = xwl_seat->focus_window->toplevel->drawable.x + event_x;
++    int y = xwl_seat->focus_window->toplevel->drawable.y + event_y;
++
++    return x >= xwl_seat->pointer_warp_target_x - 1 &&
++           x <= xwl_seat->pointer_warp_target_x + 1 &&
++           y >= xwl_seat->pointer_warp_target_y - 1 &&
++           y <= xwl_seat->pointer_warp_target_y + 1;
++}
++
++static void
++xwl_seat_release_warp_ack_check(struct xwl_seat *xwl_seat,
++                                wl_fixed_t sx_w, wl_fixed_t sy_w)
++{
++    if (!xwl_seat->release_warp_await_ack)
++        return;
++
++    if (xwl_seat_absolute_is_warp_target(xwl_seat, sx_w, sy_w)) {
++        if (xwl_seat->release_warp_retry)
++            wcf_log("release warp acked after retry=%d\n",
++                    xwl_seat->release_warp_retry);
++        xwl_seat->release_warp_await_ack = FALSE;
++        return;
++    }
++
++    if (!xwl_seat->x_cursor || xwl_seat_has_explicit_pointer_grab(xwl_seat)) {
++        xwl_seat->release_warp_await_ack = FALSE;
++        return;
++    }
++
++    if (xwl_seat->release_warp_retry < 3) {
++        wcf_log("release wrong-absolute retry=%d sx=%.0f sy=%.0f\n",
++                xwl_seat->release_warp_retry,
++                wl_fixed_to_double(sx_w), wl_fixed_to_double(sy_w));
++        xwl_seat->release_warp_retry++;
++        xwl_seat_warp_pointer_v1(xwl_seat,
++                                 xwl_seat->pointer_warp_target_x,
++                                 xwl_seat->pointer_warp_target_y);
++        wl_display_flush(xwl_seat->xwl_screen->display);
++    } else {
++        wcf_log("release warp gave up after %d retries\n",
++                xwl_seat->release_warp_retry);
++        xwl_seat->release_warp_await_ack = FALSE;
++    }
++}
++
+ static void
+ pointer_handle_motion(void *data, struct wl_pointer *pointer,
+                       uint32_t time, wl_fixed_t sx_w, wl_fixed_t sy_w)
+@@ -910,6 +963,8 @@
+     if (!xwl_seat->focus_window)
+         return;
+ 
++    xwl_seat_release_warp_ack_check(xwl_seat, sx_w, sy_w);
++
+     if (wcf_last_v1_send_us) {
+         CARD64 now_us = GetTimeInMicros();
+         if ((int64_t)(now_us - wcf_last_v1_send_us) < 3000000 && wcf_post_warp_count < 8) {
+@@ -3503,9 +3558,25 @@
+                     xwl_seat_has_explicit_pointer_grab(xwl_seat));
+         } else {
+             wcf_log("release sync done: sending warp (%d,%d)\n", rx, ry);
++            xwl_seat->release_warp_await_ack = TRUE;
++            xwl_seat->release_warp_retry = 0;
+             xwl_seat_warp_pointer_v1(xwl_seat, rx, ry);
+             wl_display_flush(xwl_seat->xwl_screen->display);
+         }
++    } else if (xwl_seat->release_warp_await_ack) {
++        if (xwl_seat->release_warp_retry < 3 &&
++            xwl_seat->x_cursor && !xwl_seat_has_explicit_pointer_grab(xwl_seat)) {
++            wcf_log("release sync done: no ack, re-sending warp (%d,%d) retry=%d\n",
++                    xwl_seat->pointer_warp_target_x, xwl_seat->pointer_warp_target_y,
++                    xwl_seat->release_warp_retry);
++            xwl_seat->release_warp_retry++;
++            xwl_seat_warp_pointer_v1(xwl_seat,
++                                     xwl_seat->pointer_warp_target_x,
++                                     xwl_seat->pointer_warp_target_y);
++            wl_display_flush(xwl_seat->xwl_screen->display);
++        } else {
++            xwl_seat->release_warp_await_ack = FALSE;
++        }
+     }
+ }
+ 
+--- a/hw/xwayland/xwayland-input.h
+b/hw/xwayland/xwayland-input.h
+@@ -104,6 +104,8 @@
+ 
+     struct xorg_list sync_pending;
+     Bool pointer_warp_sync_release_send;
++    Bool release_warp_await_ack;
++    int release_warp_retry;
+ 
+     struct xwl_pointer_warp_emulator *pointer_warp_emulator;
+     struct wl_callback *pointer_warp_sync;
+-- 
+2.53.0

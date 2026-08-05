@@ -1,0 +1,115 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Wed, 05 Aug 2026 07:55:00 +0300
+Subject: [PATCH] xwayland: send release warp after destroy ordering sync
+
+Two compositor-side races could still misplace a grab->ungrab restore
+under continuous high-rate input:
+
+- KWin applies cursor-position hints only when the surface transaction
+  carrying them reaches graphics fences. A destroy issued in the same
+  dispatch batch as the final hint therefore applies the previous
+  frame's hint (~1 frame of living-room drift).
+- The direct pointer-warp-v1 is dropped if the lock destruction has not
+  made it out of libwayland's destructor queue by the time the warp is
+  dispatched (lock still active from KWin's perspective).
+
+Make the release sequence destroy-first, then issue the warp only when
+the wl_display.sync round trip after the destroy completes. The sync
+guarantees the lock is torn down compositor-side before the warp is
+sent, so it always lands. The existing pre-warp barrier simultaneously
+drops the stale absolute the unlock emits; any subframe hint-apply
+mismatch is corrected in the same compositor frame and never visible.
+
+If capture resumed (cursor hidden again, any grab form) before the sync
+completes, the release warp is skipped (revision 9 semantics).
+---
+ hw/xwayland/xwayland-input.c | 49 ++++++++++++++++++++++++++++++------
+ hw/xwayland/xwayland-input.h |  1 +
+ 2 files changed, 43 insertions(+), 7 deletions(-)
+
+--- a/hw/xwayland/xwayland-input.c
+b/hw/xwayland/xwayland-input.c
+@@ -85,6 +85,9 @@
+ xwl_seat_maybe_lock_on_hidden_cursor(struct xwl_seat *xwl_seat);
+ 
+ static void
++xwl_seat_warp_pointer_v1(struct xwl_seat *xwl_seat, int x, int y);
++
++static void
+ xwl_seat_destroy_confined_pointer(struct xwl_seat *xwl_seat);
+ 
+ static void
+@@ -3462,9 +3465,18 @@
+                                   uint32_t callback_data)
+ {
+     struct xwl_seat *xwl_seat = data;
++    Bool send_after = FALSE;
++    int rx = 0, ry = 0;
+ 
+     (void) callback_data;
+ 
++    if (xwl_seat->pointer_warp_sync_release_send) {
++        send_after = TRUE;
++        rx = xwl_seat->pointer_warp_target_x;
++        ry = xwl_seat->pointer_warp_target_y;
++        xwl_seat->pointer_warp_sync_release_send = FALSE;
++    }
++
+     if (xwl_seat->pointer_warp_sync == callback) {
+         /*
+          * wl_pointer.motion and wl_pointer.frame are separate messages.
+@@ -3483,6 +3495,18 @@
+     }
+ 
+     wl_callback_destroy(callback);
++
++    if (send_after) {
++        if (!xwl_seat->x_cursor || xwl_seat_has_explicit_pointer_grab(xwl_seat)) {
++            wcf_log("release sync done: skip warp (cursor hidden=%d grabbed=%d)\n",
++                    xwl_seat->x_cursor == NULL,
++                    xwl_seat_has_explicit_pointer_grab(xwl_seat));
++        } else {
++            wcf_log("release sync done: sending warp (%d,%d)\n", rx, ry);
++            xwl_seat_warp_pointer_v1(xwl_seat, rx, ry);
++            wl_display_flush(xwl_seat->xwl_screen->display);
++        }
++    }
+ }
+ 
+ static const struct wl_callback_listener pointer_warp_sync_listener = {
+@@ -3985,13 +4009,19 @@
+ 
+             /*
+              * KWin ignores direct warp requests while the pointer constraint
+-             * is still active. Commit the same final hint before destroying
+-             * the lock so its unlock path and pointer-warp-v1 converge on one
+-             * position regardless of which one runs first.
++             * is still active. Commit the final hint before destroying the
++             * lock, then issue the direct warp behind a wl_display.sync so it
++             * is sent strictly after the compositor processed the lock's
++             * destruction. The warp can no longer be dropped for a still-
++             * active lock, and the barrier drops any stale absolute position
++             * the unlock emits before the target. Lock destruction may apply
++             * an older hint for a subframe window; the sync-ordered warp
++             * corrects it before it is visible.
+              */
+             xwl_pointer_warp_emulator_set_fake_pos(warp_emulator, x, y);
+             xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
+-            xwl_seat_warp_pointer_v1(xwl_seat, x, y);
++            xwl_seat_arm_pointer_warp_barrier(xwl_seat, x, y);
++            xwl_seat->pointer_warp_sync_release_send = TRUE;
+             wl_display_flush(xwl_seat->xwl_screen->display);
+             return;
+         }
+--- a/hw/xwayland/xwayland-input.h
+b/hw/xwayland/xwayland-input.h
+@@ -103,6 +103,7 @@
+     struct wl_surface *keyboard_focus;
+ 
+     struct xorg_list sync_pending;
++    Bool pointer_warp_sync_release_send;
+ 
+     struct xwl_pointer_warp_emulator *pointer_warp_emulator;
+     struct wl_callback *pointer_warp_sync;
+-- 
+2.53.0
