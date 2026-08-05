@@ -50,10 +50,12 @@ break the atomic release with sub-millisecond in-flight events.
 Revisions 11–16 close the compositor-side races: the release warp goes out
 only after a sync-ordered lock destruction (0008), a stale unlock hint
 triggers an immediate idempotent re-send capped at three warps (0009), and
-the lock destroy itself is held one frame so the compositor's
-double-buffered position hint has latched before the teardown reads it
-(0010). The full forensic record, evidence logs, and remaining risks live
-in [investigation/README.md](investigation/README.md).
+the lock destroy itself waits for the compositor to present the frame
+carrying the final position hint — signalled by a `wl_surface.frame`
+callback bound to the hint's commit — so the hint has latched before the
+teardown reads it (0010, revision 17; revision 16 used a fixed one-frame
+hold instead). The full forensic record, evidence logs, and remaining
+risks live in [investigation/README.md](investigation/README.md).
 
 ## Install on CachyOS or Arch Linux
 
@@ -81,10 +83,10 @@ Confirm the package and running executable:
 The package is named `xorg-xwayland-visible-warp` and provides
 `xorg-xwayland`, so normal package dependency checks continue to work.
 
-The revision-16 package SHA-256 is:
+The revision-17 package SHA-256 is:
 
 ```text
-0446a3d7cfb3aa987130bbdb93b6707e2a170bfee096536044b36e0553adf1cb
+49bc95dd5e3a0788d0766b45b06f6fe8224cd35f6bcb035ffea96fbfd5885fb9
 ```
 
 The preserved revision-7 baseline is available for immediate rollback:

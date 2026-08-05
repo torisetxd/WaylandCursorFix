@@ -7,7 +7,8 @@ a1dc9b7c9d82927d14f39fa4a774922866e07e8989fe3249c1b053add13d2cc1  0006-xwayland-
 eded8c891056b86af9b45310f34436fa51d66922769bc37af39bbf56730fbdba  0007-xwayland-extend-post-warp-logging.patch
 16834bb6fe9c0b837181e5297a66f8f0719a076a69ed41e8d3ee97ae035f045c  0008-xwayland-sync-ordered-release-warp.patch
 ac8e8b138b5d97235a68d2941d8fb1ff0a808140e87a3dcc54baf6d71e9a96da  0009-xwayland-ack-driven-release-retry.patch
-94d69a5f6801a2409758e087a1a332203a9f4323b9130d25fb2253a3aa284758  0010-xwayland-frame-lagged-lock-destroy.patch
+94d69a5f6801a2409758e087a1a332203a9f4323b9130d25fb2253a3aa284758  0010-xwayland-frame-lagged-lock-destroy.patch (renamed/replaced by frame-paced variant in revision 17)
+d3f34800847cb0555616c8b926adac624ca9a9200b31b5b7b10e78070714c74b  0010-xwayland-frame-paced-lock-destroy.patch
 926900e8015420111166145ae68a5b466de91569e12f32b911292505381a2a0e  xorg-xwayland-visible-warp-24.1.13-4-x86_64.pkg.tar.zst
 eb756466d7ff7c8f974a8ef2e5297e104a6dbe51aaa463c2c0a29e901eebb95d  xorg-xwayland-visible-warp-24.1.13-7-x86_64.pkg.tar.zst
 13f0da165e5dc73e40b4ea3a632f4b141995197b58e90a6dd6febcd4d20924b0  xorg-xwayland-visible-warp-24.1.13-8-x86_64.pkg.tar.zst
@@ -19,3 +20,4 @@ d2b629b8080690e04b59dad7ef9024693c1d5132e0900d9959d278d7871a49c5  xorg-xwayland-
 1f745a4a92d44446911995b74a70c54a19743656cec707bb8d57b1a861cd41b5  xorg-xwayland-visible-warp-24.1.13-14-x86_64.pkg.tar.zst
 b7cb612914c708af40812a3509a5d5ea5611eb2f2153a5e8d367db28947770e9  xorg-xwayland-visible-warp-24.1.13-15-x86_64.pkg.tar.zst
 0446a3d7cfb3aa987130bbdb93b6707e2a170bfee096536044b36e0553adf1cb  xorg-xwayland-visible-warp-24.1.13-16-x86_64.pkg.tar.zst
+49bc95dd5e3a0788d0766b45b06f6fe8224cd35f6bcb035ffea96fbfd5885fb9  xorg-xwayland-visible-warp-24.1.13-17-x86_64.pkg.tar.zst

@@ -1,6 +1,24 @@
 # Preserved revisions and bug split
 
-## Revision 16: destroy-ordering races closed (current)
+## Revision 17: frame-paced lock destroy (current)
+
+Revision 16's fix for the stale-hint unlock race held the lock destroy for a
+fixed 25 ms — a blind guess tuned to ~60 Hz pacing. Revision 17 replaces the
+guess with the exact signal: a `wl_surface.frame` callback requested
+immediately *before* the final hint commit, so it binds to that commit's
+transaction. KWin merges hint state and frame callbacks through the same
+`pending` → `current` boundary and fires the callback only at
+`frameRendered`, i.e. strictly after the hint latched. The destroy therefore
+happens the instant the frame carrying the hint is presented — the same
+frame if the commit makes the upcoming repaint, the next painted frame
+otherwise — at minimal and refresh-agnostic latency (~2–16 ms instead of a
+constant 25 ms, and never more than one painted frame). A 100 ms backstop
+timer (25 ms when no callback could be armed) covers compositors throttling
+frame callbacks on occluded surfaces, and window teardown cancels a pending
+callback so no proxy outlives its `wl_surface`. Same re-grab / cursor-hidden
+guards as revision 16.
+
+## Revision 16: destroy-ordering races closed
 
 Revisions 11–16 finish the residual "inventory opens at the last position
 instead of center, only while moving fast" case. Six WCF_DEBUG-instrumented
@@ -125,13 +143,13 @@ persistent-lock, and forced-immediate-cursor-show change.
 
 ## Reproducible artifacts
 
-- Revision-16 package:
-  `xorg-xwayland-visible-warp-24.1.13-16-x86_64.pkg.tar.zst`
-- Revision-16 package SHA-256:
-  `0446a3d7cfb3aa987130bbdb93b6707e2a170bfee096536044b36e0553adf1cb`
-- Revision-16 packaged `/usr/bin/Xwayland` SHA-256:
-  `f33c531e0f50620cc7c6a0ab2ebde8d37f5b41f078a1123080d915c32808b7a2`
+- Revision-17 package:
+  `xorg-xwayland-visible-warp-24.1.13-17-x86_64.pkg.tar.zst`
+- Revision-17 package SHA-256:
+  `49bc95dd5e3a0788d0766b45b06f6fe8224cd35f6bcb035ffea96fbfd5885fb9`
+- Revision-17 packaged `/usr/bin/Xwayland` SHA-256:
+  `0e7662b2a2e38e087cbfd519ce8678890f405e24dc395b0e0dece63b0d501877`
 
-Full per-revision artifact hashes (0001–0010 patches, packages v4–v16) are
+Full per-revision artifact hashes (0001–0010 patches, packages v4–v17) are
 tracked in `SAVED_ARTIFACTS.sha256`. Git tags preserve source: `v7-*`,
 `v9-*`, `v10-*`, `v16-*`.

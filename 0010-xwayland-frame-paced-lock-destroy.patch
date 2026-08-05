@@ -1,0 +1,242 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Wed, 05 Aug 2026 08:20:00 +0300
+Subject: [PATCH] xwayland: pace lock destroy on the hint frame's present
+
+KWin applies cursor-position hints double-buffered: the pending hint
+latches only once the surface transaction carrying it passes its
+graphics fences and the resulting frame is presented. Destroying the
+locked pointer any earlier restores the PREVIOUS frame's hint, and a
+fixed hold can only guess how long that takes (the previous revision
+used 25 ms, tuned for 60 Hz and wrong for anything else).
+
+Request a wl_surface frame callback immediately before committing the
+final hint so it binds to that very commit: the callback fires exactly
+when the frame carrying the hint is presented, after KWin latched it.
+Destroying the lock there applies the fresh hint with the minimum
+possible latency - the same frame if the commit makes the upcoming
+repaint, the next painted frame otherwise. A 100 ms backstop (25 ms if
+no frame callback could be armed) covers throttled callbacks on
+occluded surfaces, and window teardown cancels a pending callback so
+no wl_callback proxy outlives its wl_surface. Skipped entirely if
+capture resumed meanwhile.
+--- a/hw/xwayland/xwayland-input.c
++++ b/hw/xwayland/xwayland-input.c
+@@ -2234,6 +2234,15 @@
+         wl_callback_destroy(xwl_seat->pointer_warp_sync);
+         xwl_seat->pointer_warp_sync = NULL;
+     }
++    if (xwl_seat->release_destroy_timer) {
++        TimerFree(xwl_seat->release_destroy_timer);
++        xwl_seat->release_destroy_timer = NULL;
++    }
++    if (xwl_seat->release_frame_cb) {
++        wl_callback_destroy(xwl_seat->release_frame_cb);
++        xwl_seat->release_frame_cb = NULL;
++        xwl_seat->release_frame_window = NULL;
++    }
+ 
+     release_grab(xwl_seat);
+     wl_seat_destroy(xwl_seat->seat);
+@@ -4034,6 +4043,95 @@
+     return TRUE;
+ }
+ 
++static void
++xwl_seat_release_destroy_now(struct xwl_seat *xwl_seat, const char *via)
++{
++    int x = xwl_seat->pointer_warp_target_x;
++    int y = xwl_seat->pointer_warp_target_y;
++
++    if (!xwl_seat->x_cursor || xwl_seat_has_explicit_pointer_grab(xwl_seat)) {
++        wcf_log("release destroy (%s): skip (cursor hidden=%d grabbed=%d)\n",
++                via, xwl_seat->x_cursor == NULL,
++                xwl_seat_has_explicit_pointer_grab(xwl_seat));
++        return;
++    }
++
++    wcf_log("release destroy (%s): destroy+arm (%d,%d)\n", via, x, y);
++    xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
++    xwl_seat_arm_pointer_warp_barrier(xwl_seat, x, y);
++    xwl_seat->pointer_warp_sync_release_send = TRUE;
++    wl_display_flush(xwl_seat->xwl_screen->display);
++}
++
++static void
++xwl_seat_release_frame_done(void *data, struct wl_callback *callback,
++                            uint32_t callback_data)
++{
++    struct xwl_seat *xwl_seat = data;
++
++    wl_callback_destroy(callback);
++    if (xwl_seat->release_frame_cb != callback)
++        return;
++
++    xwl_seat->release_frame_cb = NULL;
++    xwl_seat->release_frame_window = NULL;
++    wcf_log("release frame: presented %llu us after commit\n",
++            (unsigned long long) (GetTimeInMicros() -
++                                  xwl_seat->release_frame_arm_us));
++
++    if (xwl_seat->release_destroy_timer) {
++        TimerFree(xwl_seat->release_destroy_timer);
++        xwl_seat->release_destroy_timer = NULL;
++    }
++
++    xwl_seat_release_destroy_now(xwl_seat, "frame");
++}
++
++static const struct wl_callback_listener release_frame_listener = {
++    .done = xwl_seat_release_frame_done,
++};
++
++static CARD32
++xwl_seat_release_destroy_timer_callback(OsTimerPtr timer, CARD32 time,
++                                        void *arg)
++{
++    struct xwl_seat *xwl_seat = arg;
++
++    (void) time;
++    xwl_seat->release_destroy_timer = NULL;
++
++    if (xwl_seat->release_frame_cb) {
++        wcf_log("release frame: no present within backstop, forcing destroy\n");
++        wl_callback_destroy(xwl_seat->release_frame_cb);
++        xwl_seat->release_frame_cb = NULL;
++        xwl_seat->release_frame_window = NULL;
++    }
++
++    xwl_seat_release_destroy_now(xwl_seat, "backstop");
++    return 0;
++}
++
++void
++xwl_seats_cancel_release_frame_for_window(struct xwl_screen *xwl_screen,
++                                          struct xwl_window *xwl_window)
++{
++    struct xwl_seat *xwl_seat;
++
++    xorg_list_for_each_entry(xwl_seat, &xwl_screen->seat_list, link) {
++        if (xwl_seat->release_frame_window == xwl_window) {
++            if (xwl_seat->release_frame_cb) {
++                wl_callback_destroy(xwl_seat->release_frame_cb);
++                xwl_seat->release_frame_cb = NULL;
++            }
++            xwl_seat->release_frame_window = NULL;
++            if (xwl_seat->release_destroy_timer) {
++                TimerFree(xwl_seat->release_destroy_timer);
++                xwl_seat->release_destroy_timer = NULL;
++            }
++        }
++    }
++}
++
+ void
+ xwl_seat_cursor_visibility_changed(struct xwl_seat *xwl_seat)
+ {
+@@ -4079,20 +4177,57 @@
+             }
+ 
+             /*
+-             * KWin ignores direct warp requests while the pointer constraint
+-             * is still active. Commit the final hint before destroying the
+-             * lock, then issue the direct warp behind a wl_display.sync so it
+-             * is sent strictly after the compositor processed the lock's
+-             * destruction. The warp can no longer be dropped for a still-
+-             * active lock, and the barrier drops any stale absolute position
+-             * the unlock emits before the target. Lock destruction may apply
+-             * an older hint for a subframe window; the sync-ordered warp
+-             * corrects it before it is visible.
++             * KWin applies cursor-position hints double-buffered: a hint
++             * only latches when the surface transaction carrying it passes
++             * its graphics fences and gets presented. Destroying the lock
++             * before that applies the previous frame's (stale) hint and the
++             * unlock visibly lands the cursor tens to hundreds of pixels
++             * off. A wl_surface frame callback requested before the hint
++             * commit binds to that commit and fires exactly when the frame
++             * carrying the hint is presented; destroying the lock there is
++             * both minimal (same frame if the commit makes the repaint,
++             * next frame otherwise) and race-free. A short backstop timer
++             * covers throttled frame callbacks on occluded surfaces.
+              */
++            xwl_seat->pointer_warp_target_x = x;
++            xwl_seat->pointer_warp_target_y = y;
++
++            if (xwl_seat->release_frame_cb) {
++                wl_callback_destroy(xwl_seat->release_frame_cb);
++                xwl_seat->release_frame_cb = NULL;
++                xwl_seat->release_frame_window = NULL;
++            }
++            if (xwl_seat->release_destroy_timer) {
++                TimerFree(xwl_seat->release_destroy_timer);
++                xwl_seat->release_destroy_timer = NULL;
++            }
++
++            if (warp_emulator->locked_pointer && xwl_seat->focus_window) {
++                WindowPtr fw = xwl_seat->focus_window->toplevel;
++
++                if (x >= fw->drawable.x && y >= fw->drawable.y &&
++                    x < (fw->drawable.x + fw->drawable.width) &&
++                    y < (fw->drawable.y + fw->drawable.height)) {
++                    xwl_seat->release_frame_cb =
++                        wl_surface_frame(xwl_seat->focus_window->surface);
++                    if (xwl_seat->release_frame_cb) {
++                        wl_callback_add_listener(xwl_seat->release_frame_cb,
++                                                 &release_frame_listener,
++                                                 xwl_seat);
++                        xwl_seat->release_frame_window =
++                            xwl_seat->focus_window;
++                        xwl_seat->release_frame_arm_us = GetTimeInMicros();
++                    }
++                }
++            }
++
+             xwl_pointer_warp_emulator_set_fake_pos(warp_emulator, x, y);
+-            xwl_seat_destroy_pointer_warp_emulator(xwl_seat);
+-            xwl_seat_arm_pointer_warp_barrier(xwl_seat, x, y);
+-            xwl_seat->pointer_warp_sync_release_send = TRUE;
++            xwl_seat->release_destroy_timer =
++                TimerSet(xwl_seat->release_destroy_timer, 0,
++                         xwl_seat->release_frame_cb ? 100 : 25,
++                         xwl_seat_release_destroy_timer_callback, xwl_seat);
++            wcf_log("release: hint committed, destroy on frame present%s\n",
++                    xwl_seat->release_frame_cb ? " (backstop 100ms)" : "");
+             wl_display_flush(xwl_seat->xwl_screen->display);
+             return;
+         }
+--- a/hw/xwayland/xwayland-input.h
++++ b/hw/xwayland/xwayland-input.h
+@@ -106,6 +106,10 @@
+     Bool pointer_warp_sync_release_send;
+     Bool release_warp_await_ack;
+     int release_warp_retry;
++    OsTimerPtr release_destroy_timer;
++    struct wl_callback *release_frame_cb;
++    struct xwl_window *release_frame_window;
++    CARD64 release_frame_arm_us;
+ 
+     struct xwl_pointer_warp_emulator *pointer_warp_emulator;
+     struct wl_callback *pointer_warp_sync;
+@@ -227,6 +231,9 @@
+                               struct xwl_window *xwl_window);
+ void xwl_seat_unconfine_pointer(struct xwl_seat *xwl_seat);
+ 
++void xwl_seats_cancel_release_frame_for_window(struct xwl_screen *xwl_screen,
++                                               struct xwl_window *xwl_window);
++
+ void xwl_screen_release_tablet_manager(struct xwl_screen *xwl_screen);
+ 
+ #endif /* XWAYLAND_INPUT_H */
+--- a/hw/xwayland/xwayland-window.c
++++ b/hw/xwayland/xwayland-window.c
+@@ -1679,6 +1679,11 @@
+ static void
+ release_wl_surface_for_window(struct xwl_window *xwl_window)
+ {
++    /* A release may be waiting on this surface's frame callback; the
++     * wl_callback proxy must not outlive the wl_surface it belongs to. */
++    xwl_seats_cancel_release_frame_for_window(xwl_window->xwl_screen,
++                                              xwl_window);
++
+     if (xwl_window->xwayland_surface)
+         release_wl_surface_for_window_shell(xwl_window);
+     else

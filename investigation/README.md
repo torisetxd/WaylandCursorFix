@@ -158,12 +158,25 @@ settles — but the settle now arrived only through the destroy-hint at
 corrected itself over several frames. That's what the user felt as "where
 it was when I closed it".
 
-**Revision 16 (0010, final):** attack the root instead of the symptom —
-hold the lock destroy ~25 ms (≈1 frame @60 Hz) after committing the final
-hint, so the hint transaction has *already latched* when the destroy
-runs. The unlock restore then lands on the target on the very first
-compositor frame, with the entire 0008/0009 path kept as insurance and
-the whole window hidden inside the pre-existing ~5 ms cursor-show delay.
+**Revision 16 (0010, first form):** attack the root instead of the
+symptom — hold the lock destroy ~25 ms (≈1 frame @60 Hz) after committing
+the final hint, so the hint transaction has *already latched* when the
+destroy runs. The unlock restore then lands on the target on the very
+first compositor frame, with the entire 0008/0009 path kept as insurance
+and the whole window hidden inside the pre-existing ~5 ms cursor-show
+delay.
+
+**Revision 17 (0010, final form):** replace the blind hold with the exact
+signal — a `wl_surface.frame` callback armed *before* the final hint
+commit binds to that commit's transaction (KWin moves both the hint
+extension state and frame callbacks through the same `pending`→`current`
+merge) and fires from `frameRendered`, strictly after the hint latched.
+The destroy now happens at minimum, refresh-agnostic latency: same frame
+if the commit makes the upcoming repaint, next painted frame otherwise
+(verified against `surface.cpp`: `addFrameCallback`, `mergeInto`,
+`frameRendered`). A 100 ms backstop (25 ms when not armable) covers
+compositors throttling frame callbacks on occluded surfaces, and window
+teardown cancels any pending callback so no proxy outlives its surface.
 
 ### Result on v16 (user-verified)
 
@@ -238,8 +251,8 @@ the whole window hidden inside the pre-existing ~5 ms cursor-show delay.
 - **Scaled displays** (`xwaylandScale != 1`): the unlock hint is divided
   by `surface->scaleOverride` in KWin while wp warp coords are not;
   untested, likely wrong restores on scaled setups.
-- **Frame-lagged destroy**: hard-coded 25 ms assumes ~60 Hz-class frame
-  pacing; on a 240 Hz display the hint latches sooner (harmless, just the
-  fixed hold); on sub-40 Hz panels it is the intended lower bound.
+- **Frame-paced destroy (v17+)**: latency is now one painted frame at any
+  refresh rate by construction; the residual backstop (100 ms) only runs
+  when the surface's frame callbacks are throttled (occlusion).
 - The WCF_DEBUG layer adds string/string work only when enabled; consider
   dropping 0006/0007 from a "stable" build once the area is quiet.

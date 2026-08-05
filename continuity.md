@@ -1,8 +1,22 @@
-# WaylandCursorFix — continuity log (as of 2026-08-05, v16 release)
+# WaylandCursorFix — continuity log (as of 2026-08-05, v17 release)
 
-**STATE OF PLAY: RESOLVED.** v16 installed on the user's machine; the
-residual "inventory opens at last position" symptom is no longer
-reproducible. Full forensic record + evidence logs:
+**STATE OF PLAY: RESOLVED.** v17 = v16 with the fixed 25 ms destroy hold
+replaced by exact frame pacing: a `wl_surface.frame` callback armed right
+before the final hint commit binds to that commit's transaction and fires
+from KWin's `frameRendered` — strictly after the hint latched — so the
+lock destroy now happens at minimal, refresh-agnostic latency (same frame
+if the commit makes the upcoming repaint, next painted frame otherwise;
+verified against KWin source: extension state + frame callbacks merge
+through the same `pending`→`current` boundary in `surface.cpp`).
+100 ms backstop (25 ms if unarmed) covers throttled callbacks on occluded
+surfaces; window teardown cancels pending callbacks
+(`xwl_seats_cancel_release_frame_for_window`). Patch 0010 regenerated as
+`0010-xwayland-frame-paced-lock-destroy.patch`; package
+`xorg-xwayland-visible-warp-24.1.13-17`. Build note: `xtrans` had to be
+vendored into `.analysis/deps` (pkgconfig prefix rewritten), build via
+`makepkg -d` with `.analysis/bin` + `.analysis/venv/bin` on PATH.
+
+Full forensic record + evidence logs:
 `investigation/README.md` (document), `investigation/*.log` (decisive
 sessions). Below is the older working log, kept for history.
 
