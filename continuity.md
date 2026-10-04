@@ -1,3 +1,20 @@
+# WaylandCursorFix — continuity log (as of 2026-10-04, v19 release)
+
+**CURRENT: revision 19** (single patch `0001-xwayland-hold-cursor-show-until-lock-hint-latched.patch`,
+package `xorg-xwayland-visible-warp-24.1.13-19`). Supersedes everything below:
+the v4–v18 warp patches are in `legacy-patches/` and their `wp_pointer_warp_v1`
+premise is wrong on KWin (it ignores that request for Xwayland windows). See
+`REVISIONS.md` and the README for the verified root cause and the test rig
+(`test/`), which is how to check any change without manual testing.
+Build note: meson, xtrans and xorg-font-util are not installed on the dev
+machine; the package was built with `makepkg -f -C -d` with `.analysis/venv/bin`
+on PATH, `.analysis/deps/usr/share/pkgconfig` on PKG_CONFIG_PATH and an
+`arch-meson` shim (`meson setup --prefix=/usr --libexecdir=lib --sbindir=bin
+--buildtype=plain --auto-features=enabled --wrap-mode=nodownload -Db_lto=true
+-Db_pie=true`).
+
+---
+
 # WaylandCursorFix — continuity log (as of 2026-08-05, v17 release)
 
 **STATE OF PLAY: RESOLVED.** v17 = v16 with the fixed 25 ms destroy hold

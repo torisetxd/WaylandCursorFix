@@ -1,14 +1,15 @@
-3a3922544e9a80bdfc138e85b0707169398bca19c15b3a836d6408fc48948b49  0001-xwayland-honor-visible-pointer-warps.patch
-76c1f8efc02019764cd6de22fd6e685f22b5729b12f87bc8ed2dd893dafd3363  0002-xwayland-drop-stale-pre-warp-motion.patch
-8544d2bdbdf51b734aec09271a1e1a9679924738f680ecbaddbdebfd3a762262  0003-xwayland-make-release-warp-atomic.patch
-5fdae4c9dda1a134caa384c3b539faf33bbe6d19e3a2d962013c20de7dcdd7af  0004-xwayland-skip-release-while-grabbed.patch
-78489a698028ea768cfe2c396ba13ec95566f10c6a453c3762725071a7fb2d85  0005-xwayland-grace-warp-ungrab-race.patch
-a1dc9b7c9d82927d14f39fa4a774922866e07e8989fe3249c1b053add13d2cc1  0006-xwayland-debug-logging.patch
-eded8c891056b86af9b45310f34436fa51d66922769bc37af39bbf56730fbdba  0007-xwayland-extend-post-warp-logging.patch
-16834bb6fe9c0b837181e5297a66f8f0719a076a69ed41e8d3ee97ae035f045c  0008-xwayland-sync-ordered-release-warp.patch
-ac8e8b138b5d97235a68d2941d8fb1ff0a808140e87a3dcc54baf6d71e9a96da  0009-xwayland-ack-driven-release-retry.patch
-94d69a5f6801a2409758e087a1a332203a9f4323b9130d25fb2253a3aa284758  0010-xwayland-frame-lagged-lock-destroy.patch (renamed/replaced by frame-paced variant in revision 17)
-d3f34800847cb0555616c8b926adac624ca9a9200b31b5b7b10e78070714c74b  0010-xwayland-frame-paced-lock-destroy.patch
+# Patches 0001-0010 are the superseded revision 4-18 stack (legacy-patches/); revision 19 is the single patch below.
+# 0010-xwayland-frame-lagged-lock-destroy.patch (revision 16) was replaced in place and is not kept.
+3a3922544e9a80bdfc138e85b0707169398bca19c15b3a836d6408fc48948b49  legacy-patches/0001-xwayland-honor-visible-pointer-warps.patch
+76c1f8efc02019764cd6de22fd6e685f22b5729b12f87bc8ed2dd893dafd3363  legacy-patches/0002-xwayland-drop-stale-pre-warp-motion.patch
+8544d2bdbdf51b734aec09271a1e1a9679924738f680ecbaddbdebfd3a762262  legacy-patches/0003-xwayland-make-release-warp-atomic.patch
+5fdae4c9dda1a134caa384c3b539faf33bbe6d19e3a2d962013c20de7dcdd7af  legacy-patches/0004-xwayland-skip-release-while-grabbed.patch
+78489a698028ea768cfe2c396ba13ec95566f10c6a453c3762725071a7fb2d85  legacy-patches/0005-xwayland-grace-warp-ungrab-race.patch
+a1dc9b7c9d82927d14f39fa4a774922866e07e8989fe3249c1b053add13d2cc1  legacy-patches/0006-xwayland-debug-logging.patch
+eded8c891056b86af9b45310f34436fa51d66922769bc37af39bbf56730fbdba  legacy-patches/0007-xwayland-extend-post-warp-logging.patch
+16834bb6fe9c0b837181e5297a66f8f0719a076a69ed41e8d3ee97ae035f045c  legacy-patches/0008-xwayland-sync-ordered-release-warp.patch
+ac8e8b138b5d97235a68d2941d8fb1ff0a808140e87a3dcc54baf6d71e9a96da  legacy-patches/0009-xwayland-ack-driven-release-retry.patch
+111d94ac628bcc7f5221b2709b72ed5147559a491e4653d97aa93125eb52da49  legacy-patches/0010-xwayland-frame-paced-lock-destroy.patch
 926900e8015420111166145ae68a5b466de91569e12f32b911292505381a2a0e  xorg-xwayland-visible-warp-24.1.13-4-x86_64.pkg.tar.zst
 eb756466d7ff7c8f974a8ef2e5297e104a6dbe51aaa463c2c0a29e901eebb95d  xorg-xwayland-visible-warp-24.1.13-7-x86_64.pkg.tar.zst
 13f0da165e5dc73e40b4ea3a632f4b141995197b58e90a6dd6febcd4d20924b0  xorg-xwayland-visible-warp-24.1.13-8-x86_64.pkg.tar.zst
@@ -21,3 +22,6 @@ d2b629b8080690e04b59dad7ef9024693c1d5132e0900d9959d278d7871a49c5  xorg-xwayland-
 b7cb612914c708af40812a3509a5d5ea5611eb2f2153a5e8d367db28947770e9  xorg-xwayland-visible-warp-24.1.13-15-x86_64.pkg.tar.zst
 0446a3d7cfb3aa987130bbdb93b6707e2a170bfee096536044b36e0553adf1cb  xorg-xwayland-visible-warp-24.1.13-16-x86_64.pkg.tar.zst
 49bc95dd5e3a0788d0766b45b06f6fe8224cd35f6bcb035ffea96fbfd5885fb9  xorg-xwayland-visible-warp-24.1.13-17-x86_64.pkg.tar.zst
+4f4d2e2550993e1ef11362ca56f0dcf4a0b014aca9e490a2f351f821fcc07c0b  0001-xwayland-hold-cursor-show-until-lock-hint-latched.patch
+4560aa8462ccbb3ac33ed5a160eec86d882fcaeb6b7d523aaa736e37f3b2843a  xorg-xwayland-visible-warp-24.1.13-18-x86_64.pkg.tar.zst
+f90081714055cd6d24a87db363e62f4da08d2ad7e8350235f00c59120138dcb6  xorg-xwayland-visible-warp-24.1.13-19-x86_64.pkg.tar.zst

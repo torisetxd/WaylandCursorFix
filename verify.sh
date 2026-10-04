@@ -2,8 +2,8 @@
 set -euo pipefail
 
 expected_package='xorg-xwayland-visible-warp'
-expected_version='24.1.13-17'
-expected_binary_sha256='0e7662b2a2e38e087cbfd519ce8678890f405e24dc395b0e0dece63b0d501877'
+expected_version='24.1.13-19'
+expected_binary_sha256='44f4121eb2e8c22c4338173153b3f376862b35257d54c2c95e8d6f8b05dfd0cb'
 
 if ! pacman -Q "${expected_package}" >/dev/null 2>&1; then
   printf '%s is not installed.\n' "${expected_package}" >&2
@@ -19,16 +19,8 @@ fi
 
 installed_binary_sha256="$(sha256sum /usr/bin/Xwayland | awk '{ print $1 }')"
 if [[ "${installed_binary_sha256}" != "${expected_binary_sha256}" ]]; then
-  printf '/usr/bin/Xwayland does not match the revision-17 package.\n' >&2
+  printf '/usr/bin/Xwayland does not match the revision-19 package.\n' >&2
   exit 3
-fi
-
-if command -v wayland-info >/dev/null 2>&1; then
-  if ! wayland-info 2>/dev/null |
-      awk '/wp_pointer_warp_v1/ { found = 1 } END { exit !found }'; then
-    printf 'The active Wayland compositor does not advertise wp_pointer_warp_v1.\n' >&2
-    exit 4
-  fi
 fi
 
 pacman -Q "${expected_package}"

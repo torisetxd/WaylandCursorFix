@@ -14,11 +14,13 @@ final hint so it binds to that very commit: the callback fires exactly
 when the frame carrying the hint is presented, after KWin latched it.
 Destroying the lock there applies the fresh hint with the minimum
 possible latency - the same frame if the commit makes the upcoming
-repaint, the next painted frame otherwise. A 100 ms backstop (25 ms if
-no frame callback could be armed) covers throttled callbacks on
-occluded surfaces, and window teardown cancels a pending callback so
-no wl_callback proxy outlives its wl_surface. Skipped entirely if
-capture resumed meanwhile.
+repaint, the next painted frame otherwise. To give the latch extra
+margin, a second frame callback is chained so the destroy runs two
+painted frames after the hint commit. A 100 ms backstop (25 ms if no
+frame callback could be armed) covers throttled callbacks on occluded
+surfaces, and window teardown cancels a pending callback so no
+wl_callback proxy outlives its wl_surface. Skipped entirely if capture
+resumed meanwhile.
 --- a/hw/xwayland/xwayland-input.c
 +++ b/hw/xwayland/xwayland-input.c
 @@ -2234,6 +2234,15 @@
@@ -37,7 +39,7 @@ capture resumed meanwhile.
  
      release_grab(xwl_seat);
      wl_seat_destroy(xwl_seat->seat);
-@@ -4034,6 +4043,95 @@
+@@ -4034,6 +4043,118 @@
      return TRUE;
  }
  
@@ -61,21 +63,44 @@ capture resumed meanwhile.
 +    wl_display_flush(xwl_seat->xwl_screen->display);
 +}
 +
++static const struct wl_callback_listener release_frame_listener;
++
 +static void
 +xwl_seat_release_frame_done(void *data, struct wl_callback *callback,
 +                            uint32_t callback_data)
 +{
 +    struct xwl_seat *xwl_seat = data;
++    struct xwl_window *xwl_window;
 +
 +    wl_callback_destroy(callback);
 +    if (xwl_seat->release_frame_cb != callback)
 +        return;
 +
 +    xwl_seat->release_frame_cb = NULL;
++    xwl_window = xwl_seat->release_frame_window;
 +    xwl_seat->release_frame_window = NULL;
 +    wcf_log("release frame: presented %llu us after commit\n",
 +            (unsigned long long) (GetTimeInMicros() -
 +                                  xwl_seat->release_frame_arm_us));
++
++    if (xwl_seat->release_frame_remaining > 1) {
++        /*
++         * Delay the destroy one extra painted frame as a safety margin in
++         * case the hint transaction latches late. Re-arm the frame callback
++         * so it binds to the next present of the same surface.
++         */
++        if (xwl_window && xwl_window->surface) {
++            xwl_seat->release_frame_remaining--;
++            xwl_seat->release_frame_cb = wl_surface_frame(xwl_window->surface);
++            if (xwl_seat->release_frame_cb) {
++                wl_callback_add_listener(xwl_seat->release_frame_cb,
++                                         &release_frame_listener, xwl_seat);
++                xwl_seat->release_frame_window = xwl_window;
++                xwl_seat->release_frame_arm_us = GetTimeInMicros();
++                return;
++            }
++        }
++    }
 +
 +    if (xwl_seat->release_destroy_timer) {
 +        TimerFree(xwl_seat->release_destroy_timer);
@@ -133,7 +158,7 @@ capture resumed meanwhile.
  void
  xwl_seat_cursor_visibility_changed(struct xwl_seat *xwl_seat)
  {
-@@ -4079,20 +4177,57 @@
+@@ -4079,20 +4177,58 @@
              }
  
              /*
@@ -153,9 +178,9 @@ capture resumed meanwhile.
 +             * unlock visibly lands the cursor tens to hundreds of pixels
 +             * off. A wl_surface frame callback requested before the hint
 +             * commit binds to that commit and fires exactly when the frame
-+             * carrying the hint is presented; destroying the lock there is
-+             * both minimal (same frame if the commit makes the repaint,
-+             * next frame otherwise) and race-free. A short backstop timer
++             * carrying the hint is presented; chaining one more frame
++             * callback makes the destroy run two painted frames later for
++             * extra margin, and stays race-free. A short backstop timer
 +             * covers throttled frame callbacks on occluded surfaces.
               */
 +            xwl_seat->pointer_warp_target_x = x;
@@ -185,6 +210,7 @@ capture resumed meanwhile.
 +                                                 xwl_seat);
 +                        xwl_seat->release_frame_window =
 +                            xwl_seat->focus_window;
++                        xwl_seat->release_frame_remaining = 2;
 +                        xwl_seat->release_frame_arm_us = GetTimeInMicros();
 +                    }
 +                }
@@ -205,7 +231,7 @@ capture resumed meanwhile.
          }
 --- a/hw/xwayland/xwayland-input.h
 +++ b/hw/xwayland/xwayland-input.h
-@@ -106,6 +106,10 @@
+@@ -106,6 +106,11 @@
      Bool pointer_warp_sync_release_send;
      Bool release_warp_await_ack;
      int release_warp_retry;
@@ -213,6 +239,7 @@ capture resumed meanwhile.
 +    struct wl_callback *release_frame_cb;
 +    struct xwl_window *release_frame_window;
 +    CARD64 release_frame_arm_us;
++    CARD8 release_frame_remaining;
  
      struct xwl_pointer_warp_emulator *pointer_warp_emulator;
      struct wl_callback *pointer_warp_sync;

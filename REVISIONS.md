@@ -1,3 +1,41 @@
+# Revisions
+
+## Revision 19: one patch, hidden cursor until the hint is latched
+
+Rebuilt from the pristine 24.1.13 source with a single patch,
+`0001-xwayland-hold-cursor-show-until-lock-hint-latched.patch`. The old stack
+is in `legacy-patches/`.
+
+Findings that drove it, all reproduced in the nested-KWin rig under `test/`:
+
+- The restore bug is the double-buffered lock position hint. KWin latches it
+  when the surface transaction that carried it is applied, which happens after
+  every earlier unready buffer commit of that surface. Under GPU load the
+  final hint is still queued when the lock is destroyed, so KWin reads an
+  older one. Unpatched Xwayland: 3 of 10 correct releases at heavy load.
+- KWin (6.7.4, master, 6.8) drops `wp_pointer_warp_v1` for Xwayland windows:
+  the handler uses `WaylandServer::findWindow()`, which only searches native
+  Wayland windows. The release warps of patches 0001, 0003, 0008 and 0009
+  therefore never had an effect on KWin; every earlier "success" came from
+  the hint path. `xwl_seat_has_explicit_pointer_grab()` always returned FALSE,
+  so patch 0004 was dead code as well.
+- The earlier diagnosis that libwayland defers the lock destructor is not
+  supported by the KWin source (destroy is synchronous).
+- Revisions 16-18 waited for the hint to latch while the cursor was already
+  visible at the stale position, then jumped it (a visible teleport, 33-125 ms
+  late under load). Revision 19 waits the same way but keeps the cursor
+  hidden, so it only ever appears at the final position.
+
+Verification: `test/matrix.sh` (both simulators x 0/150/400 GPU quads x moving
+/ still release, 10 cycles each) passes 12 of 12 on the packaged binary, plus
+post-release motion tracking and quick re-capture. See the README table.
+
+The first revision-19 analysis run of the test rig mis-scored some cycles
+because the simulator repositioned the pointer for the next cycle inside the
+analysis window; `analyze.py` now ends the window at that reposition. The
+rev-18 "fails the SDL pattern at light load" reading from that run was this
+artifact, not a bug in revision 18.
+
 # Preserved revisions and bug split
 
 ## Revision 17: frame-paced lock destroy (current)

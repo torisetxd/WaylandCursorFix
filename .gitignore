@@ -9,3 +9,11 @@
 /*.tar.xz
 /*.tar.xz.sig
 /*.pkg.tar.zst
+test/wcf-mouse
+test/sim-lwjgl
+test/sim-sdl
+test/wl/native-warp
+test/wl/*-protocol.c
+test/wl/*-protocol.h
+/diagnostics/x11-cursor-trace
+__pycache__/

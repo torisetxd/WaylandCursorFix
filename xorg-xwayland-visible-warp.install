@@ -1,7 +1,7 @@
 post_install() {
   cat <<'EOF'
 
-Xwayland visible-pointer warp support is installed.
+Xwayland with the capture-release cursor fix is installed.
 Reboot (or log out of Plasma and back in) before testing games.
 The running Xwayland process cannot be replaced safely in-place.
 

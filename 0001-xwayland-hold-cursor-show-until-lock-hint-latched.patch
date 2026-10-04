@@ -1,0 +1,244 @@
+From: Wayland Cursor Fix <local@localhost>
+Date: Sun, 4 Oct 2026 12:00:00 +0300
+Subject: [PATCH] xwayland: hold the cursor show until the lock's position hint is latched
+
+X11 games capture the mouse with a hidden cursor plus a grab; Xwayland
+emulates that with a zwp_locked_pointer_v1 whose cursor position hint tracks
+the virtual X11 pointer. When the game releases the capture (menu or
+inventory opens) Xwayland destroys the lock and the compositor moves the real
+pointer to the hint.
+
+The hint is double-buffered surface state. A compositor only latches it when
+the commit that carried it is applied, and that commit is applied after every
+buffer commit that preceded it. When the game is GPU bound those buffers are
+not ready for a few frames, so destroying the lock right away makes the
+pointer reappear at a stale hint: the window edge, or the pre-capture
+position, especially while the mouse is moving fast. KWin ignores
+wp_pointer_warp_v1 for Xwayland windows, so the hint is the only mechanism
+that can place the pointer.
+
+Keep the cursor hidden and the lock alive when the cursor is about to be
+shown, request a frame callback together with the latest hint commit and
+destroy the lock and show the cursor when it fires: every earlier commit,
+the hint included, has been applied by then, so the pointer appears at its
+final position and never anywhere else. Explicit warps during the wait
+re-arm the callback, a 100 ms timer bounds the wait if the compositor never
+sends one, and a window without an outstanding frame callback (nothing can
+be queued) keeps the stock immediate behaviour.
+---
+diff --color -ruN a/hw/xwayland/xwayland-cursor.c b/hw/xwayland/xwayland-cursor.c
+--- a/hw/xwayland/xwayland-cursor.c	2026-10-04 10:14:02.743157337 +0300
++++ b/hw/xwayland/xwayland-cursor.c	2026-10-04 10:39:45.299297498 +0300
+@@ -293,9 +293,144 @@
+     xwl_seat->pending_x_cursor = NULL;
+ }
+ 
++/*
++ * Showing the cursor while the pointer is locked (hidden cursor + grab, the
++ * usual "mouse captured" state of a game) destroys the zwp_locked_pointer_v1
++ * and the compositor then moves the real pointer to the position hint the
++ * lock carried.  The hint is double-buffered surface state: the compositor
++ * only latches it when the commit that carried it is applied, and that commit
++ * is applied after every buffer commit that preceded it.  When the game is
++ * GPU bound those buffers are not ready for a few frames, so destroying the
++ * lock right away makes the pointer reappear at a stale position.
++ *
++ * Instead of destroying the lock at once, keep the cursor hidden and wait
++ * for a frame callback requested together with the latest hint commit.  Once
++ * it fires every earlier commit, the hint included, has been applied, and
++ * only then is the lock destroyed and the cursor shown.  The pointer thus
++ * never becomes visible anywhere but at its final position.
++ */
++#define CURSOR_HOLD_BACKSTOP_MS 100
++
++static const struct wl_callback_listener cursor_hold_listener;
++
++static void
++xwl_seat_cursor_hold_finish(struct xwl_seat *xwl_seat)
++{
++    CursorPtr cursor = xwl_seat->pending_x_cursor;
++
++    xwl_seat_cursor_hold_cancel(xwl_seat);
++
++    /* The client hid the cursor again in the meantime: stay locked */
++    if (!cursor)
++        return;
++
++    xwl_seat->x_cursor = cursor;
++    xwl_seat_cursor_visibility_changed(xwl_seat);
++    xwl_seat_update_all_cursors(xwl_seat);
++}
++
++/* The lock went away while the cursor show was held back (window gone, the
++ * virtual pointer left it, ...): there is nothing left to wait for, show the
++ * pending cursor now. */
++void
++xwl_seat_cursor_hold_flush(struct xwl_seat *xwl_seat)
++{
++    if (!xwl_seat->pending_x_cursor)
++        return;
++
++    xwl_seat->x_cursor = xwl_seat->pending_x_cursor;
++    xwl_seat_update_all_cursors(xwl_seat);
++}
++
++static void
++xwl_seat_cursor_hold_done(void *data, struct wl_callback *callback,
++                          uint32_t time)
++{
++    struct xwl_seat *xwl_seat = data;
++
++    if (callback != xwl_seat->cursor_hold_cb)
++        return;
++
++    xwl_seat_cursor_hold_finish(xwl_seat);
++}
++
++static const struct wl_callback_listener cursor_hold_listener = {
++    xwl_seat_cursor_hold_done
++};
++
++static CARD32
++xwl_seat_cursor_hold_timer(OsTimerPtr timer, CARD32 time, void *arg)
++{
++    xwl_seat_cursor_hold_finish(arg);
++    return 0;
++}
++
++void
++xwl_seat_cursor_hold_cancel(struct xwl_seat *xwl_seat)
++{
++    if (xwl_seat->cursor_hold_cb) {
++        wl_callback_destroy(xwl_seat->cursor_hold_cb);
++        xwl_seat->cursor_hold_cb = NULL;
++    }
++    if (xwl_seat->cursor_hold_timer) {
++        TimerFree(xwl_seat->cursor_hold_timer);
++        xwl_seat->cursor_hold_timer = NULL;
++    }
++    xwl_seat->cursor_hold = FALSE;
++}
++
++/* Request a frame callback that follows the next commit on @surface. */
++void
++xwl_seat_cursor_hold_rearm(struct xwl_seat *xwl_seat,
++                           struct wl_surface *surface)
++{
++    if (!xwl_seat->cursor_hold)
++        return;
++
++    if (xwl_seat->cursor_hold_cb)
++        wl_callback_destroy(xwl_seat->cursor_hold_cb);
++    xwl_seat->cursor_hold_cb = wl_surface_frame(surface);
++    wl_callback_add_listener(xwl_seat->cursor_hold_cb,
++                             &cursor_hold_listener, xwl_seat);
++}
++
++Bool
++xwl_seat_cursor_hold_begin(struct xwl_seat *xwl_seat)
++{
++    struct xwl_pointer_warp_emulator *warp_emulator =
++        xwl_seat->pointer_warp_emulator;
++
++    if (xwl_seat->cursor_hold)
++        return TRUE;
++
++    if (xwl_seat->x_cursor || !xwl_seat->pending_x_cursor)
++        return FALSE;
++
++    if (!warp_emulator || !warp_emulator->locked_pointer ||
++        !warp_emulator->locked_window)
++        return FALSE;
++
++    /* No frame callback outstanding means every buffer commit has already
++     * been applied, so the hint cannot be queued behind anything. */
++    if (!warp_emulator->locked_window->frame_callback)
++        return FALSE;
++
++    xwl_seat->cursor_hold = TRUE;
++    xwl_seat_cursor_hold_rearm(xwl_seat, warp_emulator->locked_window->surface);
++    wl_surface_commit(warp_emulator->locked_window->surface);
++    xwl_seat->cursor_hold_timer = TimerSet(xwl_seat->cursor_hold_timer, 0,
++                                           CURSOR_HOLD_BACKSTOP_MS,
++                                           xwl_seat_cursor_hold_timer,
++                                           xwl_seat);
++    return TRUE;
++}
++
+ static void
+ xwl_seat_update_cursor_visibility(struct xwl_seat *xwl_seat)
+ {
++    if (xwl_seat_cursor_hold_begin(xwl_seat))
++        return;
++
+     xwl_seat->x_cursor = xwl_seat->pending_x_cursor;
+     xwl_seat_cursor_visibility_changed(xwl_seat);
+     xwl_seat_update_all_cursors(xwl_seat);
+diff --color -ruN a/hw/xwayland/xwayland-input.c b/hw/xwayland/xwayland-input.c
+--- a/hw/xwayland/xwayland-input.c	2026-10-04 10:14:02.743342137 +0300
++++ b/hw/xwayland/xwayland-input.c	2026-10-04 10:39:45.299498567 +0300
+@@ -2011,6 +2011,7 @@
+ 
+     release_tablet_manager_seat(xwl_seat);
+ 
++    xwl_seat_cursor_hold_cancel(xwl_seat);
+     release_grab(xwl_seat);
+     wl_seat_destroy(xwl_seat->seat);
+     xwl_cursor_release(&xwl_seat->cursor);
+@@ -3383,6 +3384,9 @@
+                                          xwl_window,
+                                          sprite,
+                                          x, y);
++    if (warp_emulator->xwl_seat->cursor_hold && warp_emulator->locked_window)
++        xwl_seat_cursor_hold_rearm(warp_emulator->xwl_seat,
++                                   warp_emulator->locked_window->surface);
+     xwl_pointer_warp_emulator_set_fake_pos(warp_emulator, x, y);
+ }
+ 
+@@ -3543,12 +3547,18 @@
+ void
+ xwl_seat_destroy_pointer_warp_emulator(struct xwl_seat *xwl_seat)
+ {
++    Bool was_holding = xwl_seat->cursor_hold;
++
+     if (!xwl_seat->pointer_warp_emulator)
+         return;
+ 
++    xwl_seat_cursor_hold_cancel(xwl_seat);
+     xwl_pointer_warp_emulator_destroy(xwl_seat->pointer_warp_emulator);
+     xwl_seat->pointer_warp_emulator = NULL;
+ 
++    if (was_holding)
++        xwl_seat_cursor_hold_flush(xwl_seat);
++
+     if (xwl_seat->cursor_confinement_window) {
+         xwl_seat_confine_pointer(xwl_seat,
+                                  xwl_seat->cursor_confinement_window);
+diff --color -ruN a/hw/xwayland/xwayland-input.h b/hw/xwayland/xwayland-input.h
+--- a/hw/xwayland/xwayland-input.h	2026-10-04 10:14:02.743391477 +0300
++++ b/hw/xwayland/xwayland-input.h	2026-10-04 10:39:45.299339388 +0300
+@@ -82,6 +82,11 @@
+     CursorPtr x_cursor;
+     OsTimerPtr x_cursor_timer;
+     CursorPtr pending_x_cursor;
++    /* Cursor show held back while the pointer lock's position hint is
++     * still in flight to the compositor, see xwl_seat_cursor_hold_begin() */
++    Bool cursor_hold;
++    struct wl_callback *cursor_hold_cb;
++    OsTimerPtr cursor_hold_timer;
+     struct xwl_cursor cursor;
+     struct xwl_window *last_focus_window;
+ 
+@@ -209,6 +214,12 @@
+ 
+ void xwl_seat_cursor_visibility_changed(struct xwl_seat *xwl_seat);
+ 
++Bool xwl_seat_cursor_hold_begin(struct xwl_seat *xwl_seat);
++void xwl_seat_cursor_hold_rearm(struct xwl_seat *xwl_seat,
++                                struct wl_surface *surface);
++void xwl_seat_cursor_hold_cancel(struct xwl_seat *xwl_seat);
++void xwl_seat_cursor_hold_flush(struct xwl_seat *xwl_seat);
++
+ void xwl_seat_confine_pointer(struct xwl_seat *xwl_seat,
+                               struct xwl_window *xwl_window);
+ void xwl_seat_unconfine_pointer(struct xwl_seat *xwl_seat);
